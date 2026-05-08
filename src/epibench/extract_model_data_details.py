@@ -22,8 +22,17 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
         # read in as pd.DataFrame
         df = pd.read_csv(model_info[model])
 
+        # datatype assertions, ensure these are read in as strings
+        df = df.astype(
+            {'target': str,
+             'horizon': str,
+             'location': str,
+             'output_type': str
+             }
+        )
+
         # check for required columns
-        missing = REQUIRED_MODEL_DATA_COLUMNS - set(df.columns)
+        missing = set(REQUIRED_MODEL_DATA_COLUMNS) - set(df.columns)
         assert not missing, f"{model} CSV data is missing columns: {missing}"
 
         # drop all other columns (we don't use them in this package)
@@ -40,7 +49,8 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
                 f"{model} CSV data `target` column has more than one unique value. "
                 f"Currently, EpiBench only handles model data with one unique target per run."
             )
-        global_target_list.append(target)
+        current_target = list(target)[0]
+        global_target_list.append(str(current_target))
         
         # filter entries s.t. target_end_date only spans the eval start/end date 
         df['target_end_date'] = pd.to_datetime(df['target_end_date'])
@@ -54,10 +64,8 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
         df = df.rename(columns={'output_type_id': 'quantile_level', 'value': 'predicted'})
 
         # get list of locations
-        locations = set(df['locations']) 
-        global_locations_list.extend(locations)
-
-        # datatype assertions # TODO 
+        locations = set(df['location']) 
+        global_locations_list.extend(list(locations))
 
         # append to dictionary
         return_dict[model] = {"target": target, "locations": locations}
@@ -65,7 +73,7 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
     # prepare other info for return
     if len(set(global_target_list)) > 1:
         raise ValueError(
-
+            f"Found more than one target in your model data: {global_target_list}. Please consolidate to one unified target per run."
         )
     else:
         singular_target = str(global_target_list[0])

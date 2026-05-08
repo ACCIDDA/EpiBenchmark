@@ -45,13 +45,13 @@ class GroundTruth:
         gt['target_end_date'] = pd.to_datetime(gt['target_end_date'], errors='coerce')
         gt['as_of'] = pd.to_datetime(gt['as_of'], errors='coerce')
         # only keep the target we need
-        gt = gt[gt['target'] == self.target]
-        assert not gt.empty, f"Ground truth data fetched from provided hub does not have target {self.target}"
+        gt = gt[gt['target'] == self.target].copy()
+        assert not gt.empty, f"Ground truth data fetched from provided hub does not have target '{self.target}'"
         
-        gt = gt[gt['location'].isin(self.locations)]
+        gt = gt[gt['location'].isin(self.locations)].copy()
         assert not gt.empty, f"Ground truth data fetched from provided hub does not have locations {self.locations} for target {self.target}"
 
-        gt = gt[gt['target_end_date'].between(self.start_date, self.end_date)]
+        gt = gt[gt['target_end_date'].between(self.start_date, self.end_date)].copy()
         assert not gt.empty, "Ground truth data fetched from provided hub does not have any data for target, locations, dates combo found in model data."
 
         # as_of filtering TODO 

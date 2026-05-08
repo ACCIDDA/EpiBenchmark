@@ -34,7 +34,7 @@ def validate_config(config_path: str) -> dict:
         raise KeyError(f"Config file is missing required keys: {missing}")
 
     # `hub`-specific key check
-    hub_path = Path(config['hub'])
+    hub_path = Path(config['hub_path'])
     if (not hub_path.is_dir()) and (hub_path.exists()):
         raise NotADirectoryError(f"Config hub_path points to a file, not a directory: {hub_path}")
     if not hub_path.exists():
@@ -71,4 +71,4 @@ def validate_config(config_path: str) -> dict:
         raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
 
     logger.info("Success ✅")
-    return hub_path, start.date(), end.date(), model_info, output_path
+    return hub_path, start, end, model_info, output_path
