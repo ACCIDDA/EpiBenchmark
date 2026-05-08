@@ -2,10 +2,12 @@
 
 import argparse
 import logging
+import pandas as pd
 
 from validate_config import validate_config
 from extract_model_data_details import extract_model_data_details
 from ground_truth import GroundTruth
+from scoring_bridge import ScoringBridge
 
 
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +29,7 @@ def main():
     hub_path, evaluation_start_date, evaluation_end_date, model_info, output_path = validate_config(args.config_path)
 
     logger.info("Validating model data...")
-    model_data_details, target, locations_list = extract_model_data_details( # presently only handles one target
+    model_dict, target, locations_list = extract_model_data_details( # presently only handles one target
         model_info=model_info, 
         eval_start_date=evaluation_start_date, 
         eval_end_date=evaluation_end_date
@@ -42,20 +44,20 @@ def main():
         eval_end_date=evaluation_end_date
     ) # access the actual DataFrame with gto.gt
 
-    output_dict = {}
-    for model in model_info:
-        logger.info(f"Scoring model {model}...")
-        # validate csv at path
-        # score from start, end
-        # add output table to dict 
-        pass
-    
-    for modelname, output_table in output_dict:
-        # save to output_path, fail if overwrite will occur
-        pass
+    # concat and merge
+    df = pd.concat(model_dict.values(), ignore_index=True)
+    df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(columns=['target'])
 
-    # end 
-    print("File executed successfully to end.\n\n\n")
+    # score! with scoringutils (R component)
+    logging.info("Scoring model data...")
+    scorer = ScoringBridge()
+    try:
+        scores = scorer.score_forecasts(df)
+    except Exception as e:
+        raise Exception(f"{e}")
+
+
+    print("File executed successfully to end 🎉 .\n\n\n")
 
 
 if __name__ == "__main__":

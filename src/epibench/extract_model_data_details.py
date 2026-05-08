@@ -16,7 +16,7 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
     """
     global_target_list = []
     global_locations_list = []
-    return_dict = {}
+    model_dict = {}
     for model in model_info:
 
         # read in as pd.DataFrame
@@ -59,6 +59,7 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
         # filter out only output_type == quantile
         df = df[df['output_type'] == 'quantile']
         assert not df.empty, f"{model} CSV data has no entries with output_type 'quantile'."
+        df = df.drop(columns=['output_type'])
 
         # properly rename the columns that need to be renamed (moving into scoringutils conventions)
         df = df.rename(columns={'output_type_id': 'quantile_level', 'value': 'predicted'})
@@ -68,7 +69,7 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
         global_locations_list.extend(list(locations))
 
         # append to dictionary
-        return_dict[model] = {"target": target, "locations": locations}
+        model_dict[model] = df
     
     # prepare other info for return
     if len(set(global_target_list)) > 1:
@@ -80,4 +81,4 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
     locations_list = list(set(global_locations_list))
     
     logger.info("Success ✅")
-    return return_dict, singular_target, locations_list
+    return model_dict, singular_target, locations_list
