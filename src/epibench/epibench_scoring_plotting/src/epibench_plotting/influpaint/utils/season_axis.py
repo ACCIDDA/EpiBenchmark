@@ -38,7 +38,6 @@ class SeasonAxis:
 
     Instance Attributes: # NEW, rename the attribute category
     - locations_df (pd.DataFrame): DataFrame containing location information
-    - locations (list): List of location codes in order #[YL]: this is a parameter not an attribute. Should be removed from the docstring
     - season_start_month (int): Start month for flu seasons (1-12)
     - season_start_day (int): Start day for flu seasons (1-31)
 
