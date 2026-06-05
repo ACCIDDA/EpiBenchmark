@@ -38,6 +38,7 @@ class SeasonAxis:
 
     Instance Attributes: # NEW, rename the attribute category
     - locations_df (pd.DataFrame): DataFrame containing location information
+    - locations (list): List of location codes in order #[YL]: this is a parameter not an attribute. Should be removed from the docstring
     - season_start_month (int): Start month for flu seasons (1-12)
     - season_start_day (int): Start day for flu seasons (1-31)
 
@@ -67,11 +68,11 @@ class SeasonAxis:
     """
 
     # Class Attributes
-    season_start_month = 8
-    season_start_day = 1
+    default_season_start_month = 8
+    default_season_start_day = 1
 
     def __init__(
-        self, locations: pd.DataFrame, season_start_month: int = season_start_month, season_start_day: int = season_start_day
+        self, locations: pd.DataFrame, season_start_month: int = default_season_start_month, season_start_day: int = default_season_start_day
     ):
         self.update_locations(locations)
         
@@ -100,10 +101,10 @@ class SeasonAxis:
     ):
         # Use class defaults if caller did not provide values
         if season_start_month is None:
-            season_start_month = cls.season_start_month
+            season_start_month = cls.default_season_start_month
 
         if season_start_day is None:
-            season_start_day = cls.season_start_day
+            season_start_day = cls.default_season_start_day
 
         location_filepath = INFLUPAINT_DIR/"influpaint_locations.csv" if location_filepath is None else location_filepath
         
@@ -136,10 +137,10 @@ class SeasonAxis:
     ):
         # Use class defaults if caller did not provide values
         if season_start_month is None:
-            season_start_month = cls.season_start_month
+            season_start_month = cls.default_season_start_month
 
         if season_start_day is None:
-            season_start_day = cls.season_start_day
+            season_start_day = cls.default_season_start_day
 
         location_filepath = INFLUPAINT_DIR/"metrocast_locations.csv" if location_filepath is None else location_filepath
         

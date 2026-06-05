@@ -246,7 +246,7 @@ if __name__ == "__main__":
     target_end_month = df_raw["target_end_date"].dt.month
 
     # Vectorized season calculation
-    season_start_year = np.where(target_end_month >= SeasonAxis.season_start_month, target_end_year, target_end_year - 1)
+    season_start_year = np.where(target_end_month >= SeasonAxis.default_season_start_month, target_end_year, target_end_year - 1)
     season_end_year = season_start_year + 1
 
     df_raw["season"] = season_start_year.astype(str) + "-" + season_end_year.astype(str)
