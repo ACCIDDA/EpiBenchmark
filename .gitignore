@@ -12,3 +12,7 @@ wheels/
 
 # Local Python version
 .python-version
+
+# Other
+hubs/
+
