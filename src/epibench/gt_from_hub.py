@@ -18,11 +18,17 @@ def _vintaged_gt_fetch(hub_path: Path, date, main_branch="main") -> pd.DataFrame
     # fetches from oracle-ouput.parquet/csv only (because it's in all 3 hubs) <- can change? ask joseph
     repo = pygit2.Repository(hub_path)
 
+    commit = repo[repo.head.target]
     closest_commit = None
-    for commit in repo.walk(repo.head.target, pygit2.GIT_SORT_TIME):
+    while commit:
         if commit.commit_time <= date_obj.timestamp():
             closest_commit = commit
             break
+        if commit.parents:
+            commit = commit.parents[0]
+        else:
+            break
+
     if closest_commit:
         repo.checkout_tree(closest_commit.tree, strategy=pygit2.GIT_CHECKOUT_FORCE)
         repo.set_head(closest_commit.id)
