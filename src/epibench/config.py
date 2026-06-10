@@ -117,6 +117,11 @@ class Config:
                 f"Config `dates` key must either be dictionary (with keys `start_date`, `end_date`, `freq`), "
                 f"or a list of dates."
             )
+        # ensure dates don't extend into the future
+        latest_date_obj = datetime.strptime(self.dates[-1], "%Y-%m-%d").date() 
+        today = datetime.today().date()
+        if latest_date_obj > today:
+            raise ValueError(f"Config `dates` key has date(s) that extend into the future. Latest date must be on or before today: {today}")
 
         # `vintaging` -specific key check
         vintaging = self.config['vintaging']

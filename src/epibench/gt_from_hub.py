@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 from hubdata import connect_target_data
-from hubdata.create_target_data_schema import TargetType # maybe don't need this one?
+from hubdata.create_target_data_schema import TargetType 
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ HUB_TO_REPO_NAME = {
     "flu metrocast": "flu-metrocast"
 }
 
-def _vintaged_gt_fetch(hub_path: Path, date, main_branch="main") -> pd.DataFrame: #TODO, what happens if repo isn't up to date and doesn't have commits from specified dates or dates are in the future? 
+def _vintaged_gt_fetch(hub_path: Path, date, main_branch="main") -> pd.DataFrame: 
     """
     Fetch gt data at a specific date.
 
