@@ -1,4 +1,13 @@
-.venv/
-*.pyc
+# Python-generated files
 __pycache__/
-.DS_Store
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local Python version
+.python-version
