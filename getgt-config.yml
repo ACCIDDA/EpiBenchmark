@@ -1,0 +1,15 @@
+---
+
+hub_path: "/Users/emprzy/Documents/work/RespiLens-staging/FluSight-forecast-hub" # all model data must be for this hub
+
+dates: {
+    start_date: 2026-01-30, 
+    end_date: 2026-02-28,
+    freq: "1 week" # format must be: "<num> week" or "<num> weeks"
+} # or it could be a list of dates: [YYYY-MM-DD, YYYY-MM-DD, ...]. no need to specify frequency in this format 
+# e.g.,
+# dates: [YYYY-MM-DD, YYYY-MM-DD, YYYY-MM-DD]
+
+vintaging: TRUE
+
+output_path: "/Users/emprzy/Desktop"

@@ -54,7 +54,7 @@ class GroundTruth:
         gt = gt[gt['target_end_date'].between(self.start_date, self.end_date)].copy()
         assert not gt.empty, "Ground truth data fetched from provided hub does not have any data for target, locations, dates combo found in model data."
 
-        # as_of filtering TODO 
+        # as_of filtering 
         gt.sort_values(by='as_of', ascending=True, inplace=True)
         gt.drop_duplicates(
             subset=["target_end_date", "location", "target"],
