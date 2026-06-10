@@ -38,14 +38,14 @@ class Config:
         A method to validate a config for the `getgt` pipeline.
         
         Creates attributes for each key of the config:
-        - .hub_path
+        - .hub
         - .dates
         - .vintaging
         - .output_path 
         """
 
         required_keys = {
-        "hub_path", 
+        "hub", 
         "dates", 
         "vintaging", 
         "output_path"
@@ -54,12 +54,11 @@ class Config:
             raise KeyError(f"Config file is missing required keys: {missing}")
         
         # `hub_path`-specific key check
-        hub_path = Path(self.config['hub_path'])
-        if (not hub_path.is_dir()) and (hub_path.exists()):
-            raise NotADirectoryError(f"Config `hub_path` key points to a file, not a directory: {hub_path}")
-        if not hub_path.exists():
-            raise FileNotFoundError(f"Config `hub_path` key does nto exist: {hub_path}")
-        self.hub_path = hub_path
+        hub = self.config["hub"].lower()
+        if not hub in ['flusight', 'flu metrocast', 'rsv', 'covid19']:
+            raise ValueError(f"`hub` key must be exactly one of ['flusight', 'flu metrocast', 'rsv', 'covid19']. Received {hub}")
+        else:
+            self.hub = hub
 
         # `dates` -specific key check 
         dates = self.config['dates'] # TODO ensure dates don't span more than 1 season? not sure how past seasons will interact with our git checkout logic 

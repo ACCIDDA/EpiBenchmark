@@ -3,6 +3,7 @@
 import pandas as pd
 import pygit2
 import logging
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from hubdata import connect_target_data
@@ -10,9 +11,29 @@ from hubdata.create_target_data_schema import TargetType # maybe don't need this
 
 logger = logging.getLogger(__name__)
 
+REPO_URLS = {
+    "flusight": "https://github.com/cdcepi/FluSight-forecast-hub.git",
+    "covid19": "https://github.com/CDCgov/covid19-forecast-hub.git",
+    "rsv": "https://github.com/CDCgov/rsv-forecast-hub.git",
+    "flu metrocast": "https://github.com/reichlab/flu-metrocast.git", 
+}
+
+HUB_TO_REPO_NAME = {
+    "flusight": "FluSight-forecast-hub",
+    "covid19": "covid19-forecast-hub",
+    "rsv": "rsv-forecast-hub",
+    "flu metrocast": "flu-metrocast"
+}
 
 def _vintaged_gt_fetch(hub_path: Path, date, main_branch="main") -> pd.DataFrame: #TODO, what happens if repo isn't up to date and doesn't have commits from specified dates or dates are in the future? 
-    """write""" 
+    """
+    Fetch gt data at a specific date.
+
+    This function is for vintaging=True runs, where it is important
+    to fetch the gt data that was available at the given date. It does this
+    by checking out `main` of the repo at a specified hub_path, pulling the
+    oracle-output gt file, restoring the repo, and returning the file.
+    """ 
     # convert str date to datetime date; set to EOD to capture any commits that happened that day
     date_obj = datetime.strptime(date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
     # fetches from oracle-ouput.parquet/csv only (because it's in all 3 hubs) <- can change? ask joseph
@@ -80,16 +101,47 @@ def _nonvintaged_gt_fetch(hub_path: Path, dates: list) -> pd.DataFrame:
     return gt, latest_date
 
 
-def gt_from_hub(hub_path: Path, dates: list, vintaging: bool) -> dict:
-    """write"""
+def _hub_clone_setup(hub: str) -> Path:
+    """
+    Fetch or pull the hub repo based on the hub.
+    """
+    
+    # construct paths
+    script_dir = Path(__file__).parent
+    hub_parent_dir = script_dir / "hubs" / hub
+    hub_path = hub_parent_dir / HUB_TO_REPO_NAME[hub]
 
+    # if hub repo is already cloned, update it
+    if hub_path.exists():
+        logger.info(f"Updating existing hub repository: {hub_path.name}")
+        subprocess.run(['git', 'pull'], cwd=hub_path, check=True)
+
+    # if hub repo is not already cloned, clone it
+    else:
+        logger.info(f"Cloning hub repository into {hub_parent_dir}")
+        hub_parent_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.run(['git', 'clone', REPO_URLS[hub]], cwd=hub_parent_dir, check=True)
+
+    return hub_path 
+
+
+def gt_from_hub(hub: str, dates: list, vintaging: bool) -> dict:
+    """
+    Executes hub cloning/updating, ground truth data fetching 
+    with or without vintaging, and return of that data.
+    """
+
+    # ensure clone existence, update if needed
+    hub_path = _hub_clone_setup(hub=hub)
+    # establish return dict
     gt_dict = {}
 
-
+    # if using vintaging, fetch iteratively
     if vintaging:
         for date in dates:
             gt_dict[str(date)] = _vintaged_gt_fetch(hub_path=hub_path, date=date)
 
+    # if not using vintaging, fetch for latest date
     else:
         gt, latest_date = _nonvintaged_gt_fetch(
             hub_path=hub_path,
@@ -97,7 +149,7 @@ def gt_from_hub(hub_path: Path, dates: list, vintaging: bool) -> dict:
         ) 
         gt_dict[latest_date] = gt 
     
-
+    # return gt data dict (keyed by date)
     logger.info("Success ✅")
     return gt_dict
 

@@ -10,6 +10,7 @@ from gt_from_hub import gt_from_hub
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def getgt():
     """
     Main execution function for the first EpiBench pipeline (fetching gt data from hub)
@@ -25,24 +26,15 @@ def getgt():
     logger.info("Validating config...")
     config_object = Config(config_path=args.config_path, pipeline='getgt')
     # can reference config info with:
-    # .hub_path (Path)
+    # .hub (str)
     # .dates (list of dates as strs)
     # .vintaging (bool)
     # .output_path (Path)
 
-    # -- TEMP ---
-    print("\n\n\n\n")
-    print(f"hub path: {config_object.hub_path} type {type(config_object.hub_path)}")
-    print(f"dates: {config_object.dates} type {type(config_object.dates)}")
-    print(f"vintaging: {config_object.vintaging} type {type(config_object.vintaging)}")
-    print(f"output path: {config_object.output_path} type {type(config_object.output_path)}")
-    print("\n\n\n\n")
-    # --- END TEMP ---
-
     # go to hub, get gt data!
     logger.info("Fetching gt data from hub...")
     gt_data = gt_from_hub(
-        hub_path=config_object.hub_path,
+        hub=config_object.hub,
         dates=config_object.dates,
         vintaging=config_object.vintaging
     )

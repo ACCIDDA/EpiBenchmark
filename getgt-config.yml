@@ -1,6 +1,6 @@
 ---
 
-hub_path: "/Users/emprzy/Documents/work/RespiLens-staging/FluSight-forecast-hub" # all model data must be for this hub
+hub: "flusight" # must be one of 'flusight', 'flu metrocast', 'rsv', 'covid19'
 
 dates: {
     start_date: 2026-01-01, 
