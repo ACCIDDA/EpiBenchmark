@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 class Config:
     def __init__(self, config_path: str, pipeline: str):
-        if pipeline.lower() not in ['getgt', 'score']:
-            raise ValueError(f"'pipeline' param must either be 'getgt' or 'score'. Received '{pipeline}'")
+        if pipeline.lower() not in ["setup", "score"]:
+            raise ValueError(f"'pipeline' param must either be 'setup' or 'score'. Received '{pipeline}'")
         self.pipeline = pipeline.lower()
 
         self.config_path = Path(config_path)
@@ -24,18 +24,18 @@ class Config:
         with open(self.config_path, 'r') as f:
             self.config = yaml.safe_load(f)
         
-        if pipeline == 'getgt':
-            self.validate_getgt_config()
-        elif pipeline == 'score':
+        if self.pipeline == "setup":
+            self.validate_setup_config()
+        elif self.pipeline == "score":
             # will create attributes: TBD 
             self.validate_score_config()
 
         logger.info("Success ✅")
 
 
-    def validate_getgt_config(self):
+    def validate_setup_config(self):
         """
-        A method to validate a config for the `getgt` pipeline.
+        A method to validate a config for the `setup` pipeline.
         
         Creates attributes for each key of the config:
         - .hub

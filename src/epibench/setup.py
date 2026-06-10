@@ -1,30 +1,22 @@
-"""Start of the `getgt` pipeline."""
+"""Start of the `setup` pipeline."""
 
-import argparse
 import logging
 import pandas as pd
 
-from config import Config
-from gt_from_hub import gt_from_hub
+from .config import Config
+from .gt_from_hub import gt_from_hub
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def getgt():
+def setup(config_path=None):
     """
-    Main execution function for the first EpiBench pipeline (fetching gt data from hub)
+    Main execution function for the first EpiBench pipeline.
     """
-    parser = argparse.ArgumentParser(description = 'Score models over specified time frame using a config.')
-    parser.add_argument("--config-path",
-                        type=str,
-                        required=False,
-                        help="Absolute path to your YAML configuration file.")
-    args = parser.parse_args()
-
     # validate config
     logger.info("Validating config...")
-    config_object = Config(config_path=args.config_path, pipeline='getgt')
+    config_object = Config(config_path=config_path, pipeline="setup")
     # can reference config info with:
     # .hub (str)
     # .dates (list of dates as strs)
@@ -69,8 +61,3 @@ def getgt():
     challenges = pd.DataFrame(list(date_to_abs_gt_paths.items()), columns=["date", "absolute_path_to_gt"])
     challenges_output_path = output_base / "challenges.csv"
     challenges.to_csv(challenges_output_path, index=False)
-
-
-if __name__ == "__main__":
-    getgt()
-

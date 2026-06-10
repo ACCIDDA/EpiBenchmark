@@ -7,15 +7,17 @@ name = "EpiBench"
 version = "0.0.1"
 description = "Benchmark tool to evaluate model performance"
 readme = "README.md"
-requires-python = ">=3.8, <=3.11"
+requires-python = ">=3.10"
 dependencies = [
-    "matplotlib>=3.10.9",
-    "numpy>=2.4.6",
-    "pandas>=3.0.3",
-    "plotly>=6.7.0",
+    "click>=8.1",
+    "numpy>=1.24,<2.2",
+    "pandas>=2.0,<3",
     "PyYAML>=6.0",
-    "seaborn>=0.13.2",
-    "xarray>=2026.4.0",
+    "pygit2",
+    "hubdata",
+    "matplotlib>=3.7",
+    "plotly>=5.18",
+    "rpy2"
 ]
 
 [tool.setuptools]
@@ -25,4 +27,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [project.scripts]
-score-forecasts = "epibench.main:main"
+epibench = "epibench.cli:main"
