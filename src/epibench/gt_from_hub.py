@@ -86,6 +86,7 @@ def _nonvintaged_gt_fetch(hub_path: Path, dates: list) -> pd.DataFrame:
     """
 
     # get the gt from the hub (accessing timeseries gt data)
+    # non-vintaged gt data comes from timeseries file
     gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
     # only keep most recent as_of values (best available data for every loc, target_end_date)
     gt = gt.sort_values(by='as_of', ascending=True)

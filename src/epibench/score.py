@@ -56,10 +56,7 @@ def score(config_path=None):
     # score! with scoringutils (R component)
     logging.info("Scoring model data...")
     scorer = ScoringBridge()
-    try:
-        scores = scorer.score_forecasts(df)
-    except Exception as e:
-        raise Exception(f"{e}")
+    scores = scorer.score_forecasts(df)
     
     # save locally and end
     full_output_path = f"{config_object.output_path}/EpiBench_scores.csv" #TODO a hashing moment for naming as well?

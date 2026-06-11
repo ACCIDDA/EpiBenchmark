@@ -65,9 +65,10 @@ def extract_model_data_details(
             )
         else:
             # ensure the single target found matches the one in config
-            if current_model_target_s != target:
+            current_model_target = next(iter(current_model_target_s))
+            if current_model_target != target:
                 raise ValueError(
-                    f"The target ({current_model_target_s}) found in {model} does not match "
+                    f"The target ({current_model_target}) found in {model} does not match "
                     f"the target specified in config ({target})."
                 )
         
