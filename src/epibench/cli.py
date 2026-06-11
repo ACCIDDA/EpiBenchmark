@@ -41,10 +41,17 @@ def setup(config_path: str | None) -> None:
     short_help="Score model output against ground truth.",
     help="Command to score (WIS) model forecasts against ground truth data.",
 )
-def score() -> None:
-    """Placeholder score command."""
-    click.echo("`epibench score` is not implemented yet.", err=True)
-    raise click.exceptions.Exit(1)
+@click.option(
+    "--config-path",
+    type=str,
+    required=False,
+    help="Absolute path to your YAML configuration file.",
+)
+def score(config_path: str | None) -> None:
+    """Run the EpiBench score pipeline."""
+    from .score import score as run_score
+
+    run_score(config_path=config_path)
 
 
 @cli.command(
