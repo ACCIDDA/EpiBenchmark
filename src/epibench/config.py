@@ -11,23 +11,39 @@ logger = logging.getLogger(__name__)
 
 class Config:
     def __init__(self, config_path: str, pipeline: str):
-        if pipeline.lower() not in ["setup", "score"]:
-            raise ValueError(f"'pipeline' param must either be 'setup' or 'score'. Received '{pipeline}'")
+
+        valid_pipelines = ["setup", "score", "plot"]
+
+        if pipeline.lower() not in valid_pipelines:
+            raise ValueError(f"'pipeline' param must be one of {valid_pipelines}. Received '{pipeline}'.")
         self.pipeline = pipeline.lower()
 
-        self.config_path = Path(config_path)
+        # Validate config path
+        self.config_path = Path(config_path).resolve()
+
         # path confirmations (exists, correct type)
         if not self.config_path.exists():
             raise FileNotFoundError(f"--config-path {self.config_path} does not exist.")
         if self.config_path.suffix.lower() not in ['.yaml', '.yml']:
             raise ValueError(f"--config-path must point to a valid .yml file. Received {self.config_path}")
+        
+        # Load YAML config
         with open(self.config_path, 'r') as f:
             self.config = yaml.safe_load(f)
         
+        # Base directory
+        # All relative paths will be resolved relative to the config file location.
+        self.base_dir = self.config_path.parent
+
+        logger.info("Validating config...")
+
+        # Pipeline-specific validation
         if self.pipeline == "setup":
             self.validate_setup_config()
         elif self.pipeline == "score":
             self.validate_score_config()
+        elif self.pipeline == "plot":
+            self.validate_plot_config()
 
         logger.info("Success ✅")
 
@@ -200,3 +216,65 @@ class Config:
         if output_path.exists() and not output_path.is_dir():
             raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
         self.output_path = output_path 
+
+    def validate_plot_config(self):
+        """
+        Validate config for the `plot` pipeline.
+
+        Expected YAML structure:
+        data:
+          score_file_path: "EpiBench_scores.csv"
+
+        paths:
+          plot_output_dir: "results"
+        """
+        # Validate top-level sections
+        required_sections = {"data", "paths"}
+
+        missing = required_sections - set(self.config)
+
+        if missing:
+            raise KeyError(f"Missing required config sections: {missing}.")
+
+        # Validate score_file_path
+        data_config = self.config["data"]
+
+        if "score_file_path" not in data_config:
+            raise KeyError("Missing required key: data.score_file_path")
+
+        score_file_path = data_config["score_file_path"]
+
+        # Resolve relative to config file
+        self.score_file_path = (self.base_dir / score_file_path).resolve()
+
+        # Path must exist
+        if not self.score_file_path.exists():
+            raise FileNotFoundError(f"Score file not found: {self.score_file_path}")
+
+        # Must be a file
+        if not self.score_file_path.is_file():
+            raise ValueError(f"score_file_path must be a file. Received: {self.score_file_path}")
+
+        logger.info(
+            f"Validated score file: {self.score_file_path}.")
+
+        # Validate plot_output_dir
+        paths_config = self.config["paths"]
+
+        if "plot_output_dir" not in paths_config:
+            raise KeyError("Missing required key: paths.plot_output_dir")
+
+        plot_output_dir = paths_config["plot_output_dir"]
+
+        # Resolve relative to config file
+        self.plot_output_dir = (self.base_dir / plot_output_dir).resolve()
+
+        # Create directory if missing
+        self.plot_output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Must be directory
+        if not self.plot_output_dir.is_dir():
+            raise ValueError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}")
+
+        logger.info(
+            f"Validated plot output directory: {self.plot_output_dir}")
