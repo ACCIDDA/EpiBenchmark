@@ -7,14 +7,27 @@ REQUIRED_MODEL_DATA_COLUMNS = ['target', 'horizon', 'target_end_date', 'location
 logger = logging.getLogger(__name__)
 
 
-def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date) -> dict:
+def extract_model_data_details(
+        model_info: dict, 
+        eval_start_date: 
+        str, eval_end_date: str, 
+        target: str
+    ) -> dict[str: pd.DataFrame]:
     """
-    Iteratively extract info from and pre-process model data.
+    Iteratively pre-process model data; run more checks
+
+    Args:
+        - model_info: a dict where keys are model names and values are absolute paths to model output csv
+        - eval_start_date: YYYY-MM-DD when evaluation should begin (inclusive)
+        - eval_end_date: YYYY-MM-DD when evaluation should end (inclusive)
+        - target: a str of the data target to be scored on (only one per run)
 
     general `model_info` structure is: 
     {"model1": "/path/to/model1data.csv", "model2": "/path/to/model2data.csv", "model3": "/path/to/model3data.csv"} 
+
+    Returns:
+        A dict where keys are model names and values are pre-processed pd.DataFrames
     """
-    global_target_list = []
     global_locations_list = []
     model_dict = {}
     for model in model_info:
@@ -42,15 +55,21 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
         # add column for model name (`model`)
         df['model'] = model 
 
-        # record target, enforce that there's only 1 
-        target = set(df['target'])
-        if len(target) > 1:
+        # target enforcements
+        current_model_target_s = set(df['target'])
+        # ensure there is only 1 per model csv
+        if len(current_model_target_s) > 1:
             raise ValueError(
                 f"{model} CSV data `target` column has more than one unique value. "
-                f"Currently, EpiBench only handles model data with one unique target per run."
+                f"Currently, `epibench score` only handles model data with one unique target per run."
             )
-        current_target = list(target)[0]
-        global_target_list.append(str(current_target))
+        else:
+            # ensure the single target found matches the one in config
+            if current_model_target_s != target:
+                raise ValueError(
+                    f"The target ({current_model_target_s}) found in {model} does not match "
+                    f"the target specified in config ({target})."
+                )
         
         # filter entries s.t. target_end_date only spans the eval start/end date 
         df['target_end_date'] = pd.to_datetime(df['target_end_date'])
@@ -70,15 +89,8 @@ def extract_model_data_details(model_info: dict, eval_start_date, eval_end_date)
 
         # append to dictionary
         model_dict[model] = df
-    
-    # prepare other info for return
-    if len(set(global_target_list)) > 1:
-        raise ValueError(
-            f"Found more than one target in your model data: {global_target_list}. Please consolidate to one unified target per run."
-        )
-    else:
-        singular_target = str(global_target_list[0])
+
     locations_list = list(set(global_locations_list))
     
     logger.info("Success ✅")
-    return model_dict, singular_target, locations_list
+    return model_dict, locations_list

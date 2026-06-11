@@ -1,14 +1,15 @@
 ---
 
-hub_path: "/Users/emprzy/Documents/work/RespiLens-staging/FluSight-forecast-hub" # all model data must be for this hub
+hub: "flusight" # must be one of 'flusight', 'flu metrocast', 'rsv', 'covid19'
 
 evaluation_start_date: "2026-01-01" # YYYY-MM-DD
 evaluation_end_date: "2026-03-01" # dates are inclusive on both ends [,]
+
+target: "wk inc flu hosp" # only scores on target at a time
 
 models: {
     "FluSight-ensemble": "/Users/emprzy/Documents/work/miscellaneous/FluSight-ensemble.csv", 
     "UNC_IDD-InfluPaint": "/Users/emprzy/Documents/work/miscellaneous/UNC_IDD-InfluPaint.csv", 
     "UVAFluX-Ensemble": "/Users/emprzy/Documents/work/miscellaneous/UVAFluX-Ensemble.csv"
 } # only scores quantile data right now
-
-output_path: "/Users/emprzy/Desktop"
+output_path: "/Users/emprzy/Desktop/"

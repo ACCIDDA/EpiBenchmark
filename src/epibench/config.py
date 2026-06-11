@@ -27,7 +27,6 @@ class Config:
         if self.pipeline == "setup":
             self.validate_setup_config()
         elif self.pipeline == "score":
-            # will create attributes: TBD 
             self.validate_score_config()
 
         logger.info("Success ✅")
@@ -53,7 +52,7 @@ class Config:
         if missing := (required_keys - set(self.config)):
             raise KeyError(f"Config file is missing required keys: {missing}")
         
-        # `hub_path`-specific key check
+        # `hub`-specific key check
         hub = self.config["hub"].lower()
         if not hub in ['flusight', 'flu metrocast', 'rsv', 'covid19']:
             raise ValueError(f"`hub` key must be exactly one of ['flusight', 'flu metrocast', 'rsv', 'covid19']. Received {hub}")
@@ -137,12 +136,20 @@ class Config:
         self.output_path = output_path 
 
 
-    def validate_score_config(self): # TODO
+    def validate_score_config(self): 
         """
-        WRITE
+        A method to validate a config for the `score` pipeline.
+        
+        Creates attributes for each key of the config:
+        - .hub
+        - .evaluation_start_date
+        - .evaluation_end_date
+        - .target
+        - .model_info
+        - .output_path 
         """
         required_keys = {
-        "hub_path", 
+        "hub", 
         "evaluation_start_date", 
         "evaluation_end_date", 
         "models", 
@@ -151,13 +158,12 @@ class Config:
         if missing := (required_keys - set(self.config)):
             raise KeyError(f"Config file is missing required keys: {missing}")
         
-        # `hub_path`-specific key check
-        hub_path = Path(self.config['hub_path'])
-        if (not hub_path.is_dir()) and (hub_path.exists()):
-            raise NotADirectoryError(f"Config `hub_path` key points to a file, not a directory: {hub_path}")
-        if not hub_path.exists():
-            raise FileNotFoundError(f"Config `hub_path` key does not exist: {hub_path}")
-        self.hub_path = hub_path
+        # `hub`-specific key check
+        hub = self.config["hub"].lower()
+        if not hub in ['flusight', 'flu metrocast', 'rsv', 'covid19']:
+            raise ValueError(f"`hub` key must be exactly one of ['flusight', 'flu metrocast', 'rsv', 'covid19']. Received {hub}")
+        else:
+            self.hub = hub
         
         # `evaluation_start_date` and `evaluation_end_date`-specific key check
         try:
@@ -172,8 +178,11 @@ class Config:
                 f"Date Range Error: End date ({self.config['evaluation_end_date']}) "
                 f"must be at least 7 days after start date ({self.config['evaluation_start_date']})."
             )
-        self.start = start
-        self.end = end
+        self.evaluation_start_date = start
+        self.evaluation_end_date = end
+
+        # `target` key (no checks for now)
+        self.target = self.config['target']
         
         # `models`-specific key check
         if not isinstance(self.config['models'], dict) or not self.config['models']:

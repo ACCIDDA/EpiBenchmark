@@ -13,7 +13,7 @@ COLUMNS_TO_DROP = ['weekly_rate', 'location_name', 'as_of']
 
 
 class GroundTruth:
-    def __init__(self, hub_path: str, target: str, locations: list, eval_start_date, eval_end_date):
+    def __init__(self, hub_path: str, target: str, locations: list, eval_start_date: str, eval_end_date: str):
         """
         Initialization of the GroundTruth class. Pulls directly from a hub local clone using hubdata package.
         Limited validation required.
