@@ -86,6 +86,7 @@ def _nonvintaged_gt_fetch(hub_path: Path, dates: list) -> pd.DataFrame:
     """
 
     # get the gt from the hub (accessing timeseries gt data)
+    # non-vintaged gt data comes from timeseries file
     gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
     # only keep most recent as_of values (best available data for every loc, target_end_date)
     gt = gt.sort_values(by='as_of', ascending=True)
@@ -101,7 +102,7 @@ def _nonvintaged_gt_fetch(hub_path: Path, dates: list) -> pd.DataFrame:
     return gt, latest_date
 
 
-def _hub_clone_setup(hub: str) -> Path:
+def hub_clone_setup(hub: str) -> Path:
     """
     Fetch or pull the hub repo based on the hub.
     """
@@ -115,12 +116,14 @@ def _hub_clone_setup(hub: str) -> Path:
     if hub_path.exists():
         logger.info(f"Updating existing hub repository: {hub_path.name}")
         subprocess.run(['git', 'pull'], cwd=hub_path, check=True)
+        logger.info("Hub updated successfully.")
 
     # if hub repo is not already cloned, clone it
     else:
         logger.info(f"Cloning hub repository into {hub_parent_dir}")
         hub_parent_dir.mkdir(parents=True, exist_ok=True)
         subprocess.run(['git', 'clone', REPO_URLS[hub]], cwd=hub_parent_dir, check=True)
+        logger.info("Hub cloned successfully.")
 
     return hub_path 
 
@@ -132,7 +135,7 @@ def gt_from_hub(hub: str, dates: list, vintaging: bool) -> dict:
     """
 
     # ensure clone existence, update if needed
-    hub_path = _hub_clone_setup(hub=hub)
+    hub_path = hub_clone_setup(hub=hub)
     # establish return dict
     gt_dict = {}
 

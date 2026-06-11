@@ -88,3 +88,22 @@ epibench score --help
 epibench plot --help
 ```
 
+## R Dependency For Scoring
+
+The `epibench score` command calls `Rscript` and requires the R package
+`scoringutils` to be installed in your R environment.
+
+Install it with:
+
+```bash
+Rscript -e 'install.packages("scoringutils")'
+```
+
+You can verify that it is available with:
+
+```bash
+Rscript -e 'library(scoringutils)'
+```
+
+If `epibench score` reports that `scoringutils` is missing, install the package
+in the same R environment that your `Rscript` command uses.

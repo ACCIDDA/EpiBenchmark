@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def setup(config_path=None):
     """
-    Main execution function for the first EpiBench pipeline.
+    Main execution function for the epibench setup pipeline.
     """
     # validate config
     logger.info("Validating config...")
