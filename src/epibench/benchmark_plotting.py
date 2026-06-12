@@ -471,7 +471,8 @@ def plot_wis_heatmap(df: pd.DataFrame, location_filter: str, title: str,
         else:
             locs = df['location'].unique()
         plot_data = df[df['location'].isin(locs)].copy()
-        plot_data = plot_data.groupby(['model', 'group', 'season', 'target_end_date', 'horizon'], as_index=False)['wis'].sum()
+        #plot_data = plot_data.groupby(['model', 'group', 'season', 'target_end_date', 'horizon'], as_index=False)['wis'].sum()
+        plot_data = plot_data.groupby(['model', 'group', 'target_end_date', 'horizon'], as_index=False)['wis'].sum() #remove column season
     else:
         plot_data = df.copy()
     
