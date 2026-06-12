@@ -58,10 +58,18 @@ def score(config_path: str | None) -> None:
     short_help="Generate evaluation plots from scoring output.",
     help="Command to build plots used for evaluation of model forecast data.",
 )
-def plot() -> None:
-    """Placeholder plot command."""
-    click.echo("`epibench plot` is not implemented yet.", err=True)
-    raise click.exceptions.Exit(1)
+@click.option(
+    "--config-path",
+    type=str,
+    default="plot-config.yml",
+    required=False,
+    help="Absolute path to your YAML configuration file.",
+)
+def plot(config_path: str | None) -> None:
+    """Run the EpiBench plot pipeline."""
+    from .plot import plot as run_plot
+
+    run_plot(config_path=config_path)
 
 
 def main(argv: list[str] | None = None) -> int | None:
