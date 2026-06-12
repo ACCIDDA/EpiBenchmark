@@ -2,8 +2,8 @@
 
 hub: "flusight" # must be one of 'flusight', 'flu metrocast', 'rsv', 'covid19'
 
-evaluation_start_date: "2026-01-01" # YYYY-MM-DD
-evaluation_end_date: "2026-03-01" # dates are inclusive on both ends [,]
+evaluation_start_date: "2025-03-08" # YYYY-MM-DD
+evaluation_end_date: "2026-05-31" # dates are inclusive on both ends [,]
 
 target: "wk inc flu hosp" # only scores on target at a time
 
