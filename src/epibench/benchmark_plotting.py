@@ -166,7 +166,7 @@ def plot_components(df: pd.DataFrame,
     
     # Aggregate data
     plot_data = df.groupby(group_by, as_index=False).agg(agg_func)
-    print('plot component plot data=============>>\n', plot_data)
+    #print('plot component plot data=============>>\n', plot_data) #debug
     
     # Sort by specified column or total
     if sort_by is None:
@@ -507,9 +507,9 @@ def plot_wis_heatmap(df: pd.DataFrame, location_filter: str, title: str,
     else:
         plot_data = df.copy()
     
-    print('input df in benchmark plotting\n', df.head(2)) #debug
+    #print('input df in benchmark plotting\n', df.head(2)) #debug
 
-    print('plot data in benchmark plotting\n', plot_data.head(2)) #debug
+    #print('plot data in benchmark plotting\n', plot_data.head(2)) #debug
     if plot_data.empty:
         print(f"No data for heatmap: {title}")
         return
@@ -539,7 +539,7 @@ def plot_wis_heatmap(df: pd.DataFrame, location_filter: str, title: str,
     
     # Sort by mean score
     pivot_data = pivot_data.loc[pivot_data.mean(axis=1, skipna=True).sort_values().index]
-    print('pivot data in benchmark plotting\n', pivot_data)
+    #print('pivot data in benchmark plotting\n', pivot_data) #debug
     
     # Get missing info if function provided
     missing_info = {}
