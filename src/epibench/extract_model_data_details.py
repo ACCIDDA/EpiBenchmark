@@ -12,7 +12,7 @@ def extract_model_data_details(
         eval_start_date: 
         str, eval_end_date: str, 
         target: str
-    ) -> dict[str: pd.DataFrame]:
+    ) -> dict[str, pd.DataFrame]:
     """
     Iteratively pre-process model data; run more checks
 
@@ -34,7 +34,7 @@ def extract_model_data_details(
             # read in as pd.DataFrame, ensure non-empty
             df = pd.read_csv(csv_path)
             if df.empty:
-                logger.warning(f"Model {model} CSV data file {csv_path.nam} is an empty file. Skipping to next CSV.")
+                logger.warning(f"Model {model} CSV data file {csv_path.name} is an empty file. Skipping to next CSV.")
                 continue # skip to next if empty (non-fatal)
 
             # datatype assertions, ensure these are read in as strings
@@ -94,12 +94,13 @@ def extract_model_data_details(
 
             # add to model-level list of dfs
             processed_dfs.append(df)
-            if not processed_dfs:
+
+        # ensure that there are ANY dfs in the list for that model
+        if not processed_dfs:
                 raise ValueError(
                     f"No valid data found for model '{model}' after filtering. "
                     "Ensure CSV files contain valid hubverse data."
                 )
-
         # concatenate all dfs in processed_dfs for one model
         concatenated_df = pd.concat(processed_dfs, ignore_index=True)
         # append to dictionary
