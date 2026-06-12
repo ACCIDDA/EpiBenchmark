@@ -1,0 +1,5 @@
+data:
+  score_file_path: "EpiBench_scores.csv"
+
+paths:
+  plot_output_dir: "results"
