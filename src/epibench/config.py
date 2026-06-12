@@ -187,13 +187,26 @@ class Config:
         # `models`-specific key check
         if not isinstance(self.config['models'], dict) or not self.config['models']:
             raise ValueError("The 'models' key must be a non-empty dictionary of {'name': 'path'}.")
-        for model_name, data_path in self.config['models'].items():
-            p = Path(data_path)
-            if p.suffix.lower() != '.csv':
-                raise ValueError(f"Model '{model_name}' path must be a .csv file. Received: {data_path}")
-            if not p.exists():
-                raise FileNotFoundError(f"CSV for model '{model_name}' not found at: {data_path}")
-        self.model_info = self.config['models']
+        model_info = {}
+        for model_name, path in self.config['models'].items():
+            data_files_list = []
+            p = Path(path)
+            if not p.exists(): # if path doesn't exist, throw an error
+                raise FileNotFoundError(f"Path specified for '{model_name}' does not exist. Path {path}")
+            elif p.suffix.lower() == '.csv': # if it's just one csv path, add it 
+                data_files_list.append(p)
+            elif p.is_dir(): # if it's a dir path, add all csvs
+                data_files_list.extend(p.glob('*.csv'))
+            else: # if none, raise error
+                raise ValueError(
+                    f"Path specified for '{model_name}' must either point to a "
+                    f"directory of .csv files, or a single .csv file. "
+                    f"Received: {path}"
+                )
+            if len(data_files_list) < 1:
+                raise ValueError(f"Found no CSV files in path(s) in config `models` key.")
+            model_info[model_name] = data_files_list
+        self.model_info = model_info
         
         # `output_path`-specific key check
         output_path = Path(self.config['output_path'])

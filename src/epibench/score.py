@@ -25,7 +25,7 @@ def score(config_path=None):
     # .evaluation_start_date (str)
     # .evaluation_end_date (str)
     # .target (str)
-    # .model_info (dict)
+    # .model_info (dict[model name: list[paths to all CSVs]])
     # .output_path (Path)
 
     logger.info("Validating model data...")

@@ -28,7 +28,7 @@ df$target_end_date <- as.Date(df$target_end_date)
 
 forecast_object <- as_forecast_quantile(
   df,
-  forecast_unit = c("model", "target_end_date", "location", "horizon"),
+  forecast_unit = c("model", "reference_date", "target_end_date", "location", "horizon"),
   observed = "observed",
   predicted = "predicted",
   quantile = "quantile_level"
