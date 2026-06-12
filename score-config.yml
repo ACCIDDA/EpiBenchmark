@@ -8,8 +8,8 @@ evaluation_end_date: "2026-03-01" # dates are inclusive on both ends [,]
 target: "wk inc flu hosp" # only scores on target at a time
 
 models: {
-    "FluSight-ensemble": "/Users/emprzy/Documents/work/miscellaneous/FluSight-ensemble.csv", 
-    "UNC_IDD-InfluPaint": "/Users/emprzy/Documents/work/miscellaneous/UNC_IDD-InfluPaint.csv", 
-    "UVAFluX-Ensemble": "/Users/emprzy/Documents/work/miscellaneous/UVAFluX-Ensemble.csv"
+    "UGA-flucast-Copycat": "/Users/emprzy/Desktop/epibench-test/UGA-flucast-Copycat", 
+    "UNC_IDD-InfluPaint": "/Users/emprzy/Desktop/epibench-test/UNC-IDD-InfluPaint", 
+    "UVAFluX-CESGCN": "/Users/emprzy/Desktop/epibench-test/UVAFluX-CESGCN"
 } # only scores quantile data right now
 output_path: "/Users/emprzy/Desktop/"
