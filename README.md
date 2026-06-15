@@ -2,10 +2,10 @@
 
 EpiBench is a work-in-progress benchmarking tool for disease forecasts. The package is still in development.
 
-## Virtual Environment Setup
+## Installation
 
-Use a project-local virtual environment so that `pip`, `python`, and `epibench`
-all come from the same interpreter.
+We recommend using a project-local virtual environment so that `pip`, `python`,
+and `epibench` all come from the same interpreter.
 
 ```bash
 python3.13 -m venv .venv
@@ -23,23 +23,12 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-After virtual environment setup, you can deactivate and reactivate it with:
-```bash
-deactivate
-```
-
-```bash
-source .venv/bin/activate
-```
-
-## Installing EpiBench
-
 Install EpiBench from the repository root with:
 
 ```bash
 python -m pip install -e .
 ```
-This makes the `epibench` CLI availabile inside the active virtual environment.
+This makes the `epibench` CLI available inside the active virtual environment.
 
 Full install flow:
 
@@ -49,6 +38,49 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e .
 ```
+
+After setup, you can leave and re-enter the environment with:
+
+```bash
+deactivate
+source .venv/bin/activate
+```
+
+## Scoring Requirements
+
+The Python virtual environment only manages EpiBench's Python dependencies.
+The `epibench score` command also calls `Rscript`, so scoring has two external
+requirements:
+
+- `Rscript` must be available on your `PATH`
+- the CRAN package `scoringutils` must be installed in the R library used by
+  that `Rscript`
+
+This is compatible with the `venv` workflow above: you run `epibench` from the
+activated Python environment, and that Python process invokes the `Rscript`
+available on your machine.
+
+You can check that `Rscript` is available with:
+
+```bash
+Rscript --version
+```
+
+Install `scoringutils` with:
+
+```bash
+Rscript -e 'install.packages("scoringutils")'
+```
+
+Verify that the package is available with:
+
+```bash
+Rscript -e 'library(scoringutils)'
+```
+
+If `epibench score` reports that `Rscript` or `scoringutils` is missing, make
+sure they are installed in the same R environment used by your `Rscript`
+command.
 
 ## Makefile Shortcuts
 
@@ -85,23 +117,3 @@ epibench setup --help
 epibench score --help
 epibench plot --help
 ```
-
-## R Dependency For Scoring
-
-The `epibench score` command calls `Rscript` and requires the R package
-`scoringutils` to be installed in your R environment.
-
-Install it with:
-
-```bash
-Rscript -e 'install.packages("scoringutils")'
-```
-
-You can verify that it is available with:
-
-```bash
-Rscript -e 'library(scoringutils)'
-```
-
-If `epibench score` reports that `scoringutils` is missing, install the package
-in the same R environment that your `Rscript` command uses.

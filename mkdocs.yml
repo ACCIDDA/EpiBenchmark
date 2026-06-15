@@ -53,7 +53,7 @@ nav:
   - Home: index.md
   - Getting Started:
       - Installation: getting-started/installation.md
-      - Quick Start: getting-started/quick-start.md
+      - Overview: getting-started/overview.md
   - Workflows:
       - epibench setup: workflows/epibench-setup.md
       - epibench score: workflows/epibench-score.md
