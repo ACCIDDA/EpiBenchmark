@@ -26,6 +26,7 @@ def plot(config_path=None):
 
     GROUP_COLORS = {'influpaint': 'green', 'flusight': 'blue'}
     
+    # A temporary mapping between the model and the group column
     group_map = {
     'JOSEPH': 'FluSight-baseline',
     'UNC_IDD-InfluPaint': 'influpaint',
@@ -45,7 +46,7 @@ def plot(config_path=None):
 
     score_df = pd.read_csv(config_object.score_file_path, dtype={'location': str})
 
-    # Add column group
+    # Add column group. When score csv file includes column group, this logic can be removed.
     score_df['group'] = score_df['model'].map(group_map).fillna('other')
 
     #print(config_object.score_file_path)
