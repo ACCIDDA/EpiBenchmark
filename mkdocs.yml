@@ -1,8 +1,8 @@
 site_name: EpiBench
 site_description: User-facing documentation for the EpiBench Python package.
-site_url: https://emprzy.github.io/EpiBench/
-repo_url: https://github.com/emprzy/EpiBench
-repo_name: emprzy/EpiBench
+site_url: https://accidda.github.io/EpiBench/
+repo_url: https://github.com/ACCIDDA/EpiBench
+repo_name: ACCIDDA/EpiBench
 
 theme:
   name: material
