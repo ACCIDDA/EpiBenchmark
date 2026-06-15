@@ -10,8 +10,6 @@ all come from the same interpreter.
 ```bash
 python3.13 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e .
 ```
 
 If `.venv` already exists and was created with a different Python version,
@@ -43,7 +41,7 @@ python -m pip install -e .
 ```
 This makes the `epibench` CLI availabile inside the active virtual environment.
 
-Typical install flow:
+Full install flow:
 
 ```bash
 python3.13 -m venv .venv
