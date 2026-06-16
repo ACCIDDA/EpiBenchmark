@@ -6,15 +6,15 @@
 
 **EpiBench is a python package that allows you to efficiently benchmark your infectious disease forecasting model(s)**. Using the three EpiBench workflows, you can:
 
-- facillitate your model runs with vintaged data that is fetched and organized by the tool (`epibench setup`)
+- facillitate your model runs with vintaged ground truth data that is fetched and organized by the tool (`epibench setup`)
 - score model forecasts with a WIS (includes over prediction, under prediction, coverage, etc.) (`epibench score`)
 - create an array of plots to visualize model performance (`epibench plot`)
 
 
 ## Get started!
 
-- [Installation](getting-started/installation.md)
-- [Overview](getting-started/overview.md)
+- [Installation](getting-started/installation.md) – install the EpiBench package
+- [Overview](getting-started/overview.md) – understand the scope and usage of EpiBench
 
 ## Attribution
 

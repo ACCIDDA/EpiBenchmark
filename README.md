@@ -7,7 +7,7 @@ EpiBench is a work-in-progress benchmarking tool for disease forecasts. The pack
 We recommend using a project-local virtual environment so that `pip`, `python`,
 and `epibench` all come from the same interpreter.
 
-Clone the repository locally and run the following commands from the repository
+To begin installing EpiBench, clone the repository locally and run the following commands from the repository
 root.
 
 ```bash

@@ -60,7 +60,7 @@ class Config:
             self.hub = hub
 
         # `dates` -specific key check 
-        dates = self.config['dates'] # TODO ensure dates don't span more than 1 season? not sure how past seasons will interact with our git checkout logic 
+        dates = self.config['dates'] 
         if isinstance(dates, dict):
             # check for all keys
             required_date_keys = {"start_date", "end_date", "freq"}

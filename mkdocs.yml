@@ -54,6 +54,7 @@ nav:
   - Getting Started:
       - Installation: getting-started/installation.md
       - Overview: getting-started/overview.md
+      - Configuration templates: getting-started/configuration-templates.md
   - Workflows:
       - epibench setup: workflows/epibench-setup.md
       - epibench score: workflows/epibench-score.md
