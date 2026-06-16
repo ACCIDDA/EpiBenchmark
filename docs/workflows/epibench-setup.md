@@ -21,7 +21,7 @@ The dates key of the config takes the form of a dictionary with 3 required keys:
 
 - `start_date` and `end_date` should be expressed as `YYYY-MM-DD`
 - `end_date` should come AFTER `start_date`, and both dates must be in the past/present
-- `start_date` and `end_date` are inclusive [,] on both ends
+- `start_date` and `end_date` are inclusive on both ends
 - The `freq` string must be specified as `n week` or `n weeks` where `n` is a positive, non-zero integer
 
 e.g.:

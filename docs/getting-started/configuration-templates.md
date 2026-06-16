@@ -31,7 +31,7 @@ hub: "" # must be one of 'flusight', 'flu metrocast', 'rsv', 'covid19'
 evaluation_start_date: "YYYY-MM-DD" 
 evaluation_end_date: "YYYY-MM-DD" # dates are inclusive on both ends [,]
 
-target: "wk inc flu hosp" # only scores on target at a time; match must be exact
+target: "wk inc flu hosp" # only scores one target at a time; match must be exact
 
 models: {
     "name-of-model1": "/path/to/model1-data", # paths can point to a folder of CSVs

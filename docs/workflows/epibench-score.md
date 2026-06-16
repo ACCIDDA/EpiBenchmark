@@ -1,7 +1,6 @@
 # `epibench score`
 
-`epibench score` evaluates forecast output against ground truth data and uses
-the R package `scoringutils` under the hood.
+`epibench score` evaluates model output against ground truth data using the R package `scoringutils`. You can use this feature to score multiple models' data at once, returning metrics related to WIS in one table.
 
 ## Requirements
 
@@ -23,21 +22,6 @@ Verify that it loads:
 Rscript -e 'library(scoringutils)'
 ```
 
-## How It Works
-
-When you run `epibench score`, the Python package prepares the data to be
-scored and then launches `Rscript` in a subprocess. That R process loads
-`scoringutils`, computes the scores, and writes the results back for EpiBench
-to save.
-
-Because of this design, the Python virtual environment and the R installation
-are separate:
-
-- the virtual environment manages Python packages like EpiBench, pandas, and
-  click
-- your system or external R environment provides `Rscript` and
-  `scoringutils`
-
 ## Troubleshooting
 
 If scoring fails because `Rscript` is missing, install R and make sure the
@@ -45,3 +29,21 @@ If scoring fails because `Rscript` is missing, install R and make sure the
 
 If scoring fails because `scoringutils` is missing, install it in the same R
 environment used by the `Rscript` command above.
+
+## Config file
+
+To run `epibench score`, you will have to create a YAML configuration file with 6 keys: `hub`, `evaluation_start_date`, `evaluation_end_date`, `target`, `models`, and `output_path`. 
+
+### hub
+
+### evaluation_start_date
+
+### evaluation_end_date
+
+### target
+
+### models
+
+### output_path 
+
+## Example 
