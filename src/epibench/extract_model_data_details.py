@@ -12,18 +12,27 @@ def extract_model_data_details(
         eval_start_date: 
         str, eval_end_date: str, 
         target: str
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], list[str]]:
     """
     Iteratively pre-process model data; run more checks
 
     Args:
-        - model_info: a dict where keys are model names and values are a list of paths to CSVs
-        - eval_start_date: YYYY-MM-DD when evaluation should begin (inclusive)
-        - eval_end_date: YYYY-MM-DD when evaluation should end (inclusive)
-        - target: a str of the data target to be scored on (only one per run)
+        model_info: A dict where keys are model names and values are lists of
+            paths to CSV files.
+        eval_start_date: YYYY-MM-DD date when evaluation should begin
+            (inclusive).
+        eval_end_date: YYYY-MM-DD date when evaluation should end
+            (inclusive).
+        target: Data target to be scored on. Only one target is supported per
+            run.
 
     Returns:
-        A dict where keys are model names and values are pre-processed pd.DataFrames
+        A tuple containing:
+
+        - A dict where keys are model names and values are pre-processed
+            `pandas.DataFrame` objects.
+        - A deduplicated list of locations found across the processed model
+            data.
     """
     global_locations_list = []
     model_dict = {}

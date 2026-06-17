@@ -1,0 +1,75 @@
+site_name: EpiBench
+site_description: User-facing documentation for the EpiBench Python package.
+site_url: https://accidda.github.io/EpiBench/
+repo_url: https://github.com/ACCIDDA/EpiBench
+repo_name: ACCIDDA/EpiBench
+
+theme:
+  name: material
+  palette:
+    scheme: default
+    primary: blue
+    accent: orange
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - toc.follow
+    - search.suggest
+    - search.highlight
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src
+          options:
+            show_root_heading: true
+            show_source: false
+            show_signature_annotations: true
+            members_order: source
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Overview: getting-started/overview.md
+      - Configuration templates: getting-started/configuration-templates.md
+  - Workflows:
+      - epibench setup: workflows/epibench-setup.md
+      - epibench score: workflows/epibench-score.md
+      - epibench plot: workflows/epibench-plot.md
+  # - API Reference:
+  #     - Overview: api/index.md
+  #     - epibench.__init__: api/__init__.md
+  #     - epibench.__main__: api/__main__.md
+  #     - epibench.benchmark_plotting: api/benchmark_plotting.md
+  #     - epibench.cli: api/cli.md
+  #     - epibench.config: api/config.md
+  #     - epibench.extract_model_data_details: api/extract_model_data_details.md
+  #     - epibench.ground_truth: api/ground_truth.md
+  #     - epibench.gt_from_hub: api/gt_from_hub.md
+  #     - epibench.plot_evaluation_results: api/plot_evaluation_results.md
+  #     - epibench.score: api/score.md
+  #     - epibench.scoring_bridge: api/scoring_bridge.md
+  #     - epibench.setup: api/setup.md
