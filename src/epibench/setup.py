@@ -19,6 +19,7 @@ def setup(config_path=None):
     config_object = Config(config_path=config_path, pipeline="setup")
     # can reference config info with:
     # .hub (str)
+    # .targets (list)
     # .dates (list of dates as strs)
     # .vintaging (bool)
     # .output_path (Path)
@@ -27,6 +28,7 @@ def setup(config_path=None):
     logger.info("Fetching gt data from hub...")
     gt_data = gt_from_hub(
         hub=config_object.hub,
+        targets=config_object.targets,
         dates=config_object.dates,
         vintaging=config_object.vintaging
     )

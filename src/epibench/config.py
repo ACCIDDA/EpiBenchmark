@@ -38,6 +38,7 @@ class Config:
         
         Creates attributes for each key of the config:
         - .hub
+        - .targets
         - .dates
         - .vintaging
         - .output_path 
@@ -45,6 +46,7 @@ class Config:
 
         required_keys = {
         "hub", 
+        "targets",
         "dates", 
         "vintaging", 
         "output_path"
@@ -58,6 +60,20 @@ class Config:
             raise ValueError(f"`hub` key must be exactly one of ['flusight', 'flu metrocast', 'rsv', 'covid19']. Received {hub}")
         else:
             self.hub = hub
+
+        # `targets`-specific key check
+        # ensure list, ensure not empty
+        if isinstance(self.config["targets"], list):
+            if len(self.config["targets"]) == 0:
+                raise ValueError("`targets` key must be an unempty list.")
+            else:
+                targets = []
+                for target in self.config["targets"]:
+                    targets.append(target)
+        else:
+            raise ValueError(f"Please pase your `targets` key as a list of values. Received '{type(self.config["targets"])}'")
+        self.targets = self.config["targets"]
+        
 
         # `dates` -specific key check 
         dates = self.config['dates'] 

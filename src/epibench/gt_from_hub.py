@@ -25,7 +25,7 @@ HUB_TO_REPO_NAME = {
     "flu metrocast": "flu-metrocast"
 }
 
-def _vintaged_gt_fetch(hub_path: Path, date, main_branch="main") -> pd.DataFrame: 
+def _vintaged_gt_fetch(hub_path: Path, targets: list, date: str, main_branch="main") -> pd.DataFrame: 
     """
     Fetch gt data at a specific date.
 
@@ -64,18 +64,21 @@ def _vintaged_gt_fetch(hub_path: Path, date, main_branch="main") -> pd.DataFrame
         parquet_file = target_dir / "oracle-output.parquet"
         csv_file = target_dir / "oracle-output.csv"
         if parquet_file.exists():
-            return pd.read_parquet(parquet_file)
+            df = pd.read_parquet(parquet_file) #TODO read in with the columns to have correct dtype (cast str)
         elif csv_file.exists():
-            return pd.read_csv(csv_file, low_memory=False)
+            df = pd.read_csv(csv_file, low_memory=False) #TODO read in with the columns to have correct dtype (cast str)
         else:
             raise FileNotFoundError(f"Could not find ground truth file (oracle-output .csv or .parquet) in {target_dir}.")
+        df = df[df['target'].isin(targets)]
+        if df.empty:
+            raise ValueError(f"Could not find targets {targets} in ground truth data")
     finally: # reset the repo to the head so that we can use it again
         branch_ref = "refs/heads/" + main_branch
         repo.checkout(branch_ref, strategy=pygit2.GIT_CHECKOUT_FORCE)
 
 
 
-def _nonvintaged_gt_fetch(hub_path: Path, dates: list) -> pd.DataFrame:
+def _nonvintaged_gt_fetch(hub_path: Path, targets: list, dates: list) -> pd.DataFrame:
     """
     Fetch and filter gt data to contain MOST RECENT available
     data until the latest date (inclusive).
@@ -88,6 +91,10 @@ def _nonvintaged_gt_fetch(hub_path: Path, dates: list) -> pd.DataFrame:
     # get the gt from the hub (accessing timeseries gt data)
     # non-vintaged gt data comes from timeseries file
     gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
+    # keep only the target(s) we want; throw error if there are no target matches
+    gt = gt[gt['target'].isin(targets)]
+    if gt.empty:
+        raise ValueError(f"Could not find target(s) {targets} in ground truth data.")
     # only keep most recent as_of values (best available data for every loc, target_end_date)
     gt = gt.sort_values(by='as_of', ascending=True)
     gt = gt.drop_duplicates(
@@ -98,6 +105,8 @@ def _nonvintaged_gt_fetch(hub_path: Path, dates: list) -> pd.DataFrame:
     latest_date = max(dates)
     # cut off gt data at the latest date in `dates` param (inclusive)
     gt = gt[gt['target_end_date'] <= latest_date]
+    if gt.empty:
+        raise ValueError(f"Ground truth data does not contain any data for dates {dates} and target {targets}.")
 
     return gt, latest_date
 
@@ -128,7 +137,7 @@ def hub_clone_setup(hub: str) -> Path:
     return hub_path 
 
 
-def gt_from_hub(hub: str, dates: list, vintaging: bool) -> dict:
+def gt_from_hub(hub: str, targets: list, dates: list, vintaging: bool) -> dict:
     """
     Executes hub cloning/updating, ground truth data fetching 
     with or without vintaging, and return of that data.
@@ -142,12 +151,13 @@ def gt_from_hub(hub: str, dates: list, vintaging: bool) -> dict:
     # if using vintaging, fetch iteratively
     if vintaging:
         for date in dates:
-            gt_dict[str(date)] = _vintaged_gt_fetch(hub_path=hub_path, date=date)
+            gt_dict[str(date)] = _vintaged_gt_fetch(hub_path=hub_path, targets=targets, date=date)
 
     # if not using vintaging, fetch for latest date
     else:
         gt, latest_date = _nonvintaged_gt_fetch(
             hub_path=hub_path,
+            targets=targets,
             dates=dates
         ) 
         gt_dict[latest_date] = gt 
