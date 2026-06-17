@@ -1,5 +1,7 @@
 # `epibench score`
 
+COMING SOON 
+
 `epibench score` evaluates model output against ground truth data using the R package `scoringutils`. You can use this feature to score multiple models' data at once, returning metrics related to WIS in one table.
 
 ## Requirements
@@ -35,6 +37,8 @@ environment used by the `Rscript` command above.
 To run `epibench score`, you will have to create a YAML configuration file with 6 keys: `hub`, `evaluation_start_date`, `evaluation_end_date`, `target`, `models`, and `output_path`. 
 
 ### hub
+
+TODO
 
 ### evaluation_start_date
 
