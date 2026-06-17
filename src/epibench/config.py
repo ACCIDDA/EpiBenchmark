@@ -283,7 +283,8 @@ class Config:
         model_info = {}
         for model_name, path in self.config['models'].items():
             data_files_list = []
-            p = Path(path)
+            p = (self.base_dir / path).resolve()
+            print('path========>>>', p)
             if not p.exists(): # if path doesn't exist, throw an error
                 raise FileNotFoundError(f"Path specified for '{model_name}' does not exist. Path {path}")
             elif p.suffix.lower() == '.csv': # if it's just one csv path, add it 
