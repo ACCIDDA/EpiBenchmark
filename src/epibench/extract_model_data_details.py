@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 def extract_model_data_details(
         model_info: dict, 
-        eval_start_date: 
-        str, eval_end_date: str, 
+        eval_start_date: str, 
+        eval_end_date: str, 
         target: str
     ) -> tuple[dict[str, pd.DataFrame], list[str]]:
     """
@@ -87,6 +87,11 @@ def extract_model_data_details(
             # filter entries s.t. target_end_date only spans the eval start/end date 
             df['target_end_date'] = pd.to_datetime(df['target_end_date'])
             df = df[df['target_end_date'].between(eval_start_date, eval_end_date)]
+            if df.empty:
+                raise ValueError(
+                    f"Model {model} file {csv_path.name} is empty when filtering between eval "
+                    f"start date {eval_start_date} and eval end date {eval_end_date}."
+                )
 
             # filter out only output_type == quantile
             df = df[df['output_type'] == 'quantile']

@@ -211,6 +211,7 @@ class Config:
             self.hub_path = hub_path
         
         # `evaluation_start_date` and `evaluation_end_date`-specific key check
+        # ensure they can be coerced as dates
         try:
             start = datetime.strptime(self.config['evaluation_start_date'], "%Y-%m-%d")
             end = datetime.strptime(self.config['evaluation_end_date'], "%Y-%m-%d")
@@ -218,10 +219,18 @@ class Config:
             raise ValueError(
                 f"Invalid date format. Dates must be valid and formatted as YYYY-MM-DD. Error: {e}"
             )
+        # ensure neither date is in the future
+        current_date = datetime.now()
+        if start > current_date or end > current_date:
+            raise ValueError(
+                f"Date Range Error: Evaluation dates cannot be in the future. "
+                f"Received:\nstart: {self.config['evaluation_start_date']}\nend: {self.config['evaluation_end_date']}."
+            )
+        # ensure end is at least 7 days after start
         if end < start + timedelta(days=7):
             raise ValueError(
                 f"Date Range Error: End date ({self.config['evaluation_end_date']}) "
-                f"must be at least 7 days after start date ({self.config['evaluation_start_date']})."
+                f"must be at least 7 days AFTER start date ({self.config['evaluation_start_date']})."
             )
         self.evaluation_start_date = start
         self.evaluation_end_date = end

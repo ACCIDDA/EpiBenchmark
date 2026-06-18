@@ -10,8 +10,7 @@ from hubdata.create_target_data_schema import TargetType
 
 logger = logging.getLogger(__name__)
 # these columns can be dropped after processing has occurred
-COLUMNS_TO_DROP = ['weekly_rate', 'location_name', 'as_of'] 
-
+COLUMNS_TO_KEEP = ['observed', 'target_end_date', 'location', 'target']
 
 class GroundTruth:
     def __init__(self, hub_path: Path, target: str, locations: list, eval_start_date: str, eval_end_date: str):
@@ -66,5 +65,6 @@ class GroundTruth:
         # rename `observation` to `observed`
         gt = gt.rename(columns={'observation': 'observed'})
 
-        gt = gt.drop(columns=COLUMNS_TO_DROP)
+        columns_to_drop = set(COLUMNS_TO_KEEP) - set(gt.columns)
+        gt = gt.drop(columns=columns_to_drop)
         return gt
