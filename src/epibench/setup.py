@@ -52,7 +52,7 @@ def setup(config_path=None):
     # save gt files to user/output/path/HASH-GOES-HERE/gt/
     date_to_abs_gt_paths = {}
     for date, gt_df in gt_data.items():
-        if not gt_df: # Give warning if there wasn't a df returned
+        if gt_df is False: # Give warning if there wasn't a df returned
             logger.warning(f"NOTICE: No ground truth data found for specified targets ({config_object.targets}) for date {date}.")
             continue 
         else:

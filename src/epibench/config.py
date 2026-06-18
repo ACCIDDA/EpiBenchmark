@@ -66,7 +66,7 @@ class Config:
             target_data_dir = hub_path / 'target-data'
             if not target_data_dir.is_dir():
                 raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
-            self.hub_path_or_url = hub_path
+            self.hub_path = hub_path
 
         # `targets`-specific key check
         # ensure list, ensure not empty
@@ -208,7 +208,7 @@ class Config:
             target_data_dir = hub_path / 'target-data'
             if not target_data_dir.is_dir():
                 raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
-            self.hub_path_or_url = hub_path
+            self.hub_path = hub_path
         
         # `evaluation_start_date` and `evaluation_end_date`-specific key check
         try:

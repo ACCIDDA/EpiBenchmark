@@ -69,6 +69,7 @@ def _checkout_gt_fetch(hub_path: Path, targets: list, date: str, main_branch="ma
         df = df[df['target'].isin(targets)]
         if df.empty:
             raise ValueError(f"Could not find targets {targets} in ground truth data")
+        return df
     finally: # reset the repo to the head so that we can use it again
         branch_ref = "refs/heads/" + main_branch
         repo.checkout(branch_ref, strategy=pygit2.GIT_CHECKOUT_FORCE)
@@ -101,6 +102,9 @@ def _asof_gt_fetch(
 
     # multiple dates (fetch to cover a range). use case: non-vintaged gt fetch
     if isinstance(date_s, list): 
+        # find max date, convert to date obj 
+        latest_date_str = max(date_s)
+        latest_date_obj = datetime.strptime(latest_date_str, "%Y-%m-%d").date()
         # get the gt from the hub (accessing timeseries gt data)
         gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
         # keep only the target(s) we want; throw error if there are no target matches
@@ -111,19 +115,18 @@ def _asof_gt_fetch(
         gt = gt.sort_values(by='as_of', ascending=True)
         gt = gt.drop_duplicates(
             subset=["target_end_date", "location", "target"],
-            keep="last",
-            inplace=True
+            keep="last"
         )
-        latest_date = max(date_s)
         # cut off gt data at the latest date in `dates` param (inclusive)
-        gt = gt[gt['target_end_date'] <= latest_date]
+        gt = gt[gt['target_end_date'] <= latest_date_obj]
         if gt.empty:
             raise ValueError(f"Ground truth data does not contain any data for dates {date_s} and target {targets}.")
 
-        return gt, latest_date
+        return gt, latest_date_str
     
     # singe date fetch. use case: vintaged gt fetch w/ vintaging_method: "as_of"
     elif isinstance(date_s, str): 
+        date_s_obj = datetime.strptime(date_s, "%Y-%m-%d").date()
         gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
         # only keep target(s) we want; throw WARNING and proceed to next date if there are none
         gt = gt[gt['target'].isin(targets)]
@@ -135,8 +138,8 @@ def _asof_gt_fetch(
             return False, date_s # returning no gt data, proceeding
         # only keep things vintaged to the date we specified
         # flexible matching to as_of (closest without going over)
-        valid_vintages = gt[gt['as_of'] <= date_s]
-        if valid_vintages.emtpty:
+        valid_vintages = gt[gt['as_of'] <= date_s_obj]
+        if valid_vintages.empty:
             raise ValueError(
                 f"Could find no groudn truth data on or before {date_s} included in your span of dates. "
                 "Please ensure your dates do not extend outside of hub existence or into the future."
@@ -144,7 +147,7 @@ def _asof_gt_fetch(
         closest_date = valid_vintages['as_of'].max()
         gt = valid_vintages[valid_vintages['as_of'] == closest_date]
         # filter the target_end_dates as well
-        gt = gt[gt['target_end_date'] <= date_s]
+        gt = gt[gt['target_end_date'] <= date_s_obj]
         # if gt.empty:
             # possible check to have, but this should never trigger because 
             # target_end_date should remain in pseudo synchronicity w/ as_of
