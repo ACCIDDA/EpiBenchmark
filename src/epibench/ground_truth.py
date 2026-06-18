@@ -3,6 +3,7 @@
 
 import pandas as pd
 import logging
+from pathlib import Path
 from hubdata import connect_target_data
 from hubdata.create_target_data_schema import TargetType
 
@@ -13,7 +14,7 @@ COLUMNS_TO_DROP = ['weekly_rate', 'location_name', 'as_of']
 
 
 class GroundTruth:
-    def __init__(self, hub_path: str, target: str, locations: list, eval_start_date: str, eval_end_date: str):
+    def __init__(self, hub_path: Path, target: str, locations: list, eval_start_date: str, eval_end_date: str):
         """
         Initialization of the GroundTruth class. Pulls directly from a hub local clone using hubdata package.
         Limited validation required.
@@ -24,7 +25,7 @@ class GroundTruth:
         self.end_date = eval_end_date
         self._process_ground_truth_data(hub_path=hub_path)
 
-    def _process_ground_truth_data(self, hub_path: str):
+    def _process_ground_truth_data(self, hub_path: Path):
         """Process the ground truth data such that it only contains the info we need"""
         self.gt = self._filter_gt(
             connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()

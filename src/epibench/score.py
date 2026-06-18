@@ -21,7 +21,7 @@ def score(config_path=None):
     logger.info("Validating config...")
     config_object = Config(config_path=config_path, pipeline="score")
     # can reference config info with:
-    # .hub (str)
+    # .hub_path (Path)
     # .evaluation_start_date (str)
     # .evaluation_end_date (str)
     # .target (str)
@@ -36,13 +36,9 @@ def score(config_path=None):
         target=config_object.target
     )
 
-    logger.info("Checking for hub...")
-    # clone hub if it does not exist, otherwise update it
-    hub_path = hub_clone_setup(hub=config_object.hub)
-
     logger.info("Retrieving and formatting ground truth data...")
     gto = GroundTruth(
-        hub_path=hub_path,
+        hub_path=config_object.hub_path,
         target=config_object.target,
         locations=locations_list,
         eval_start_date=config_object.evaluation_start_date,

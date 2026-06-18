@@ -18,19 +18,21 @@ def setup(config_path=None):
     logger.info("Validating config...")
     config_object = Config(config_path=config_path, pipeline="setup")
     # can reference config info with:
-    # .hub (str)
+    # .hub_path (Path)
     # .targets (list)
     # .dates (list of dates as strs)
     # .vintaging (bool)
+    # .vintaging_method (str | None)
     # .output_path (Path)
 
     # go to hub, get gt data!
     logger.info("Fetching gt data from hub...")
     gt_data = gt_from_hub(
-        hub=config_object.hub,
+        hub_path=config_object.hub_path,
         targets=config_object.targets,
         dates=config_object.dates,
-        vintaging=config_object.vintaging
+        vintaging=config_object.vintaging,
+        vintaging_method=config_object.vintaging_method
     )
     # gt_data will be a dict where keys are dates and values are csvs of gt data
     # (unless vintaging is not being used, then the only key is just 'gt') 
@@ -50,14 +52,18 @@ def setup(config_path=None):
     # save gt files to user/output/path/HASH-GOES-HERE/gt/
     date_to_abs_gt_paths = {}
     for date, gt_df in gt_data.items():
-        file_name = f"{date.replace('-', '')}_gt.csv"
-        # make user/output/path/HASH-GOES-HERE/gt/YYYY-MM-DD folder (one per date!)
-        gt_output_date_folder = gt_output_dir / date 
-        gt_output_date_folder.mkdir(parents=False, exist_ok=False)
-        # make full output path of gt (user/output/path/HASH-GOES-HERE/gt/YYYY-MM-DD/file.csv)
-        gt_output_path = gt_output_date_folder / file_name
-        gt_df.to_csv(gt_output_path, index=False)
-        date_to_abs_gt_paths[date] = str(gt_output_path)
+        if not gt_df: # Give warning if there wasn't a df returned
+            logger.warning(f"NOTICE: No ground truth data found for specified targets ({config_object.targets}) for date {date}.")
+            continue 
+        else:
+            file_name = f"{date.replace('-', '')}_gt.csv"
+            # make user/output/path/HASH-GOES-HERE/gt/YYYY-MM-DD folder (one per date!)
+            gt_output_date_folder = gt_output_dir / date 
+            gt_output_date_folder.mkdir(parents=False, exist_ok=False)
+            # make full output path of gt (user/output/path/HASH-GOES-HERE/gt/YYYY-MM-DD/file.csv)
+            gt_output_path = gt_output_date_folder / file_name
+            gt_df.to_csv(gt_output_path, index=False)
+            date_to_abs_gt_paths[date] = str(gt_output_path)
 
     # create challenges.csv at output_base (user/output/path/HASH-GOES-HERE/)
     challenges = pd.DataFrame(list(date_to_abs_gt_paths.items()), columns=["date", "absolute_path_to_gt"])

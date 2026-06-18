@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import yaml
 
+from .gt_from_hub import hub_clone_setup
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +38,16 @@ class Config:
         A method to validate a config for the `setup` pipeline.
         
         Creates attributes for each key of the config:
-        - .hub
+        - .hub_path
         - .targets
         - .dates
         - .vintaging
+        - .vintaging_method (None if not vintaging)
         - .output_path 
         """
 
         required_keys = {
-        "hub", 
+        "hub_path", 
         "targets",
         "dates", 
         "vintaging", 
@@ -54,12 +56,17 @@ class Config:
         if missing := (required_keys - set(self.config)):
             raise KeyError(f"Config file is missing required keys: {missing}")
         
-        # `hub`-specific key check
-        hub = self.config["hub"].lower()
-        if not hub in ['flusight', 'flu metrocast', 'rsv', 'covid19']:
-            raise ValueError(f"`hub` key must be exactly one of ['flusight', 'flu metrocast', 'rsv', 'covid19']. Received {hub}")
-        else:
-            self.hub = hub
+        # `hub-path`-specific key check
+        if self.config["hub_path"].startswith(("http://", "https://")) and "github.com" in self.config["hub_path"]: # it's a GitHub repo URL
+            self.hub_path = hub_clone_setup(hub_url=self.config["hub_path"])
+        else: # treat it as a Path
+            hub_path = Path(self.config["hub_path"])
+            if not hub_path.is_dir():
+                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
+            target_data_dir = hub_path / 'target-data'
+            if not target_data_dir.is_dir():
+                raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
+            self.hub_path_or_url = hub_path
 
         # `targets`-specific key check
         # ensure list, ensure not empty
@@ -71,7 +78,7 @@ class Config:
                 for target in self.config["targets"]:
                     targets.append(target)
         else:
-            raise ValueError(f"Please pase your `targets` key as a list of values. Received '{type(self.config["targets"])}'")
+            raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config["targets"])}'")
         self.targets = self.config["targets"]
         
 
@@ -138,12 +145,28 @@ class Config:
         if latest_date_obj > today:
             raise ValueError(f"Config `dates` key has date(s) that extend into the future. Latest date must be on or before today: {today}")
 
-        # `vintaging` -specific key check
+        # `vintaging` -specific key check, with `vintaging_method`
         vintaging = self.config['vintaging']
         if not isinstance(vintaging, bool):
             if not (isinstance(vintaging, str) and vintaging.lower() in ['true', 'false']):
                 raise ValueError(f"Config `vintaging` key must be a boolean. Received '{vintaging}'")
         self.vintaging = vintaging if isinstance(vintaging, bool) else vintaging.lower() == 'true'
+        # if we are doing vintaging, ensure the vintaging_method is set and valid
+        if (self.vintaging):
+            if 'vintaging_method' not in self.config:
+                raise ValueError(
+                    "`vintaging_method` key must be included if `vintaging` is set to TRUE.\n"
+                    "Options are:\nvintaging_method: 'as_of'\nvintaging_method: 'checkout'"
+                )
+            else:
+                if not isinstance(self.config["vintaging_method"], str):
+                    raise ValueError(f"`vintaging_method` key must be of type 'str'. Received: {type(self.config["vintaging_method"])}")
+                if not self.config["vintaging_method"].lower() in ["as_of", "checkout"]:
+                    raise ValueError(f"`vintaging_method` must be one of ['as_of', 'checkout']. Received: {self.config['vintaging_method']}")
+            self.vintaging_method = self.config["vintaging_method"]
+        else: # if we aren't doing vintaging at all, set the vintaging_method to None
+            self.vintaging_method = None
+
 
         # `output_path`-specific key check 
         output_path = Path(self.config['output_path'])
@@ -157,7 +180,7 @@ class Config:
         A method to validate a config for the `score` pipeline.
         
         Creates attributes for each key of the config:
-        - .hub
+        - .hub_path
         - .evaluation_start_date
         - .evaluation_end_date
         - .target
@@ -165,21 +188,27 @@ class Config:
         - .output_path 
         """
         required_keys = {
-        "hub", 
+        "hub_path", 
         "evaluation_start_date", 
         "evaluation_end_date", 
+        "target",
         "models", 
         "output_path"
         }
         if missing := (required_keys - set(self.config)):
             raise KeyError(f"Config file is missing required keys: {missing}")
         
-        # `hub`-specific key check
-        hub = self.config["hub"].lower()
-        if not hub in ['flusight', 'flu metrocast', 'rsv', 'covid19']:
-            raise ValueError(f"`hub` key must be exactly one of ['flusight', 'flu metrocast', 'rsv', 'covid19']. Received {hub}")
-        else:
-            self.hub = hub
+        # `hub-path`-specific key check
+        if self.config["hub_path"].startswith(("http://", "https://")) and "github.com" in self.config["hub_path"]: # it's a GitHub repo URL
+            self.hub_path = hub_clone_setup(hub_url=self.config["hub_path"])
+        else: # treat it as a Path
+            hub_path = Path(self.config["hub_path"])
+            if not hub_path.is_dir():
+                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
+            target_data_dir = hub_path / 'target-data'
+            if not target_data_dir.is_dir():
+                raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
+            self.hub_path_or_url = hub_path
         
         # `evaluation_start_date` and `evaluation_end_date`-specific key check
         try:

@@ -1,9 +1,19 @@
-"""write"""
+"""
+Functions associated with:
+    - cloning/updating a hub (hub_clone_setup())
+    - retrieving vintaged gt data via `git checkout` (_checkout_gt_fetch() exposed via gt_from_hub())
+    - retrieving vintaged gt data via timeseries.csv "as_of" col (_asof_gt_fetch() exposed via gt_from_hub())
+    - retrieving non-vintaged gt data via timeseries.csv "as_of" col (_asof_gt_fetch() exposed via gt_from_hub())
+
+Ground truth data retreived via `git checkout` comes from oracle-output.csv/.parquet,
+ground truth data retreived via "as_of" column comes from timeseries.csv.
+"""
 
 import pandas as pd
 import pygit2
 import logging
 import subprocess
+from urllib.parse import urlparse
 from pathlib import Path
 from datetime import datetime
 from hubdata import connect_target_data
@@ -11,21 +21,8 @@ from hubdata.create_target_data_schema import TargetType
 
 logger = logging.getLogger(__name__)
 
-REPO_URLS = {
-    "flusight": "https://github.com/cdcepi/FluSight-forecast-hub.git",
-    "covid19": "https://github.com/CDCgov/covid19-forecast-hub.git",
-    "rsv": "https://github.com/CDCgov/rsv-forecast-hub.git",
-    "flu metrocast": "https://github.com/reichlab/flu-metrocast.git", 
-}
 
-HUB_TO_REPO_NAME = {
-    "flusight": "FluSight-forecast-hub",
-    "covid19": "covid19-forecast-hub",
-    "rsv": "rsv-forecast-hub",
-    "flu metrocast": "flu-metrocast"
-}
-
-def _vintaged_gt_fetch(hub_path: Path, targets: list, date: str, main_branch="main") -> pd.DataFrame: 
+def _checkout_gt_fetch(hub_path: Path, targets: list, date: str, main_branch="main") -> pd.DataFrame: 
     """
     Fetch gt data at a specific date.
 
@@ -78,87 +75,140 @@ def _vintaged_gt_fetch(hub_path: Path, targets: list, date: str, main_branch="ma
 
 
 
-def _nonvintaged_gt_fetch(hub_path: Path, targets: list, dates: list) -> pd.DataFrame:
+def _asof_gt_fetch(
+        hub_path: Path, 
+        targets: list, 
+        date_s: list | str
+    ) -> tuple[pd.DataFrame | bool, str]:
     """
-    Fetch and filter gt data to contain MOST RECENT available
-    data until the latest date (inclusive).
+    Fetch and filter gt data from a hub using the 'as_of'
+    column of a timeseries.csv gt data file.
 
     This function is for vintaging=False runs, where users don't care
-    to have gt data vintaged for each date (they just care about having
-    gt values across all dates in the list).
+    to have gt data vintaged for each date, or for vintaging=True with
+    vintaging_method="as_of" runs where users want vintaged data according
+    to the as_of column.
+
+    Args:
+        hub_path: Absolute path to clone of a hub/hub repo.
+        targets: List of targets to get gt data for.
+        date_s: List of dates or single date (to match with as_of col).
+
+    Returns:
+        Tuple with pd.DataFrame of gt data and a date that describes the gt 
+        data (either the latest date included or the only date fetched).
     """
 
-    # get the gt from the hub (accessing timeseries gt data)
-    # non-vintaged gt data comes from timeseries file
-    gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
-    # keep only the target(s) we want; throw error if there are no target matches
-    gt = gt[gt['target'].isin(targets)]
-    if gt.empty:
-        raise ValueError(f"Could not find target(s) {targets} in ground truth data.")
-    # only keep most recent as_of values (best available data for every loc, target_end_date)
-    gt = gt.sort_values(by='as_of', ascending=True)
-    gt = gt.drop_duplicates(
-        subset=["target_end_date", "location", "target"],
-        keep="last",
-        inplace=True
-    )
-    latest_date = max(dates)
-    # cut off gt data at the latest date in `dates` param (inclusive)
-    gt = gt[gt['target_end_date'] <= latest_date]
-    if gt.empty:
-        raise ValueError(f"Ground truth data does not contain any data for dates {dates} and target {targets}.")
+    # multiple dates (fetch to cover a range). use case: non-vintaged gt fetch
+    if isinstance(date_s, list): 
+        # get the gt from the hub (accessing timeseries gt data)
+        gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
+        # keep only the target(s) we want; throw error if there are no target matches
+        gt = gt[gt['target'].isin(targets)]
+        if gt.empty:
+            raise ValueError(f"Could not find target(s) {targets} in ground truth data.")
+        # only keep most recent as_of values (best available data for every loc, target_end_date)
+        gt = gt.sort_values(by='as_of', ascending=True)
+        gt = gt.drop_duplicates(
+            subset=["target_end_date", "location", "target"],
+            keep="last",
+            inplace=True
+        )
+        latest_date = max(date_s)
+        # cut off gt data at the latest date in `dates` param (inclusive)
+        gt = gt[gt['target_end_date'] <= latest_date]
+        if gt.empty:
+            raise ValueError(f"Ground truth data does not contain any data for dates {date_s} and target {targets}.")
 
-    return gt, latest_date
-
-
-def hub_clone_setup(hub: str) -> Path:
-    """
-    Fetch or pull the hub repo based on the hub.
-    """
+        return gt, latest_date
     
+    # singe date fetch. use case: vintaged gt fetch w/ vintaging_method: "as_of"
+    elif isinstance(date_s, str): 
+        gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
+        # only keep target(s) we want; throw WARNING and proceed to next date if there are none
+        gt = gt[gt['target'].isin(targets)]
+        if gt.empty:
+            logger.warning(
+                f"Could not find target(s) {targets} in ground truth data for date {date_s}. "
+                "Proceeding to next date."
+            )
+            return False, date_s # returning no gt data, proceeding
+        # only keep things vintaged to the date we specified
+        # flexible matching to as_of (closest without going over)
+        valid_vintages = gt[gt['as_of'] <= date_s]
+        if valid_vintages.emtpty:
+            raise ValueError(
+                f"Could find no groudn truth data on or before {date_s} included in your span of dates. "
+                "Please ensure your dates do not extend outside of hub existence or into the future."
+            )
+        closest_date = valid_vintages['as_of'].max()
+        gt = valid_vintages[valid_vintages['as_of'] == closest_date]
+        # filter the target_end_dates as well
+        gt = gt[gt['target_end_date'] <= date_s]
+        # if gt.empty:
+            # possible check to have, but this should never trigger because 
+            # target_end_date should remain in pseudo synchronicity w/ as_of
+        return gt, date_s
+
+
+def hub_clone_setup(hub_url: str) -> Path:
+    """
+    Clone the hub repo given a GitHub URL, or pull if a clone already exists.
+    """
+    # get name of repo
+    parsed_path = urlparse(hub_url).path
+    repo_name = parsed_path.strip("/").split("/")[-1]
+    if repo_name.endswith(".git"):
+        repo_name = repo_name[:-4]
+
     # construct paths
     script_dir = Path(__file__).parent
-    hub_parent_dir = script_dir / "hubs" / hub
-    hub_path = hub_parent_dir / HUB_TO_REPO_NAME[hub]
+    hubs_dir = script_dir / "hubs" 
+    hub_path = hubs_dir / repo_name 
 
-    # if hub repo is already cloned, update it
-    if hub_path.exists():
-        logger.info(f"Updating existing hub repository: {hub_path.name}")
+    # clone if it hasn't been yet, otherwise pull to update
+    if hub_path.exists() and hub_path.is_dir():
+        logger.info(f"Updating existing hub repository: {repo_name}")
         subprocess.run(['git', 'pull'], cwd=hub_path, check=True)
         logger.info("Hub updated successfully.")
-
-    # if hub repo is not already cloned, clone it
     else:
-        logger.info(f"Cloning hub repository into {hub_parent_dir}")
-        hub_parent_dir.mkdir(parents=True, exist_ok=True)
-        subprocess.run(['git', 'clone', REPO_URLS[hub]], cwd=hub_parent_dir, check=True)
+        logger.info(f"Cloning hub repository into {hubs_dir}")
+        hubs_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.run(['git', 'clone', hub_url], cwd=hubs_dir, check=True)
         logger.info("Hub cloned successfully.")
 
     return hub_path 
 
 
-def gt_from_hub(hub: str, targets: list, dates: list, vintaging: bool) -> dict:
+def gt_from_hub(
+        hub_path: Path, 
+        targets: list, 
+        dates: list, 
+        vintaging: bool,
+        vintaging_method: str | None
+    ) -> dict:
     """
     Executes hub cloning/updating, ground truth data fetching 
     with or without vintaging, and return of that data.
     """
-
-    # ensure clone existence, update if needed
-    hub_path = hub_clone_setup(hub=hub)
     # establish return dict
     gt_dict = {}
 
     # if using vintaging, fetch iteratively
     if vintaging:
         for date in dates:
-            gt_dict[str(date)] = _vintaged_gt_fetch(hub_path=hub_path, targets=targets, date=date)
+            if vintaging_method == 'checkout':
+                gt_dict[str(date)] = _checkout_gt_fetch(hub_path=hub_path, targets=targets, date=date)
+            elif vintaging_method == 'as_of':
+                gt, _ = _asof_gt_fetch(hub_path=hub_path, targets=targets, date_s=date)
+                gt_dict[str(date)] = gt 
 
     # if not using vintaging, fetch for latest date
     else:
-        gt, latest_date = _nonvintaged_gt_fetch(
+        gt, latest_date = _asof_gt_fetch(
             hub_path=hub_path,
             targets=targets,
-            dates=dates
+            date_s=dates
         ) 
         gt_dict[latest_date] = gt 
     
