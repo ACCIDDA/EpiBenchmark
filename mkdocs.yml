@@ -1,22 +1,28 @@
-site_name: EpiBench
-site_description: User-facing documentation for the EpiBench Python package.
-site_url: https://accidda.github.io/EpiBench/
-repo_url: https://github.com/ACCIDDA/EpiBench
+site_name: EpiBenchmark
+site_description: User-facing documentation for the EpiBenchmark Python package.
+site_url: https://accidda.github.io/EpiBenchmark/
+repo_url: https://github.com/ACCIDDA/EpiBenchmark
 repo_name: ACCIDDA/EpiBench
+exclude_docs: |
+  design.md
 
 theme:
   name: material
+  font:
+    text: Roboto
+    code: Roboto Mono
   palette:
     scheme: default
-    primary: blue
-    accent: orange
+    primary: green
+    accent: amber
   features:
-    - navigation.instant
     - navigation.tracking
     - navigation.sections
+    - navigation.top
     - toc.follow
     - search.suggest
     - search.highlight
+    - content.code.copy
 
 plugins:
   - search
@@ -41,13 +47,15 @@ markdown_extensions:
   - toc:
       permalink: true
   - pymdownx.details
-  - pymdownx.highlight:
-      anchor_linenums: true
+  - pymdownx.highlight
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
+
+extra_css:
+  - stylesheets/extra.css
 
 nav:
   - Home: index.md
