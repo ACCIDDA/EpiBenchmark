@@ -4,23 +4,23 @@
 
 ## What is EpiBenchmark?
 
-EpiBenchmark is a benchmark framework for infectious disease forecasting. It defines common forecasting tasks, fixed versions of truth data, standard evaluation rules, and shared scorecards so that models can be assessed under the same conditions. In practice, it is meant to provide a reproducible way to compare epidemiologic forecasting methods across diseases, targets, and teams.
+EpiBenchmark is a benchmark framework and challenge library for infectious disease forecasting. Challenges defines common forecasting tasks associated with fixed versions of truth data and evaluation rules. In the ends, models receive scorecards and can be compared under the same conditions. It provides a reproducible way to compare epidemiologic forecasting methods across diseases, targets, and teams.
 
 ## Why EpiBenchmark?
-Evaluation of epidemiologic forecasting models is difficult for a basic reason: the field is fragmented. Different groups evaluate forecasts on different targets, different versions of observed data, different geographic units, and different scoring rules. As a result, reported performance is often hard to compare directly across papers.
+Evaluation of epidemiologic forecasting models is difficult, and the field is fragmented. Different groups evaluate forecasts on different targets, different versions of observed data, different geographic units, and different scoring rules. As a result, reported performance is often hard to compare directly across papers.
 
-This problem is amplified by the fact that surveillance data are often revised after initial release. A model evaluated against the latest revised data may not be directly comparable to a model evaluated against an earlier data version, even if both were forecasting the same target. For probabilistic forecasts, performance also depends on the exact scoring rule and evaluation procedure used.
+This problem is amplified by the fact that surveillance data are often revised after initial release. A model evaluated against the latest revised data may not be directly comparable to a model evaluated against an earlier data version, even if both were forecasting the same target. For probabilistic forecasts, performance also depends on the exact scoring rule and evaluation procedure used. 
 
-The motivation is similar to [WeatherBench](https://arxiv.org/abs/2002.00469) and [WeatherBench 2](https://arxiv.org/abs/2308.15560): progress is easier to measure when a field has shared tasks, standardized data, baseline methods, and common scorecards. Epidemiologic forecasting needs the same structure, but adapted to revised surveillance data, local reporting differences, target definitions, forecast horizons, and probabilistic evaluation. Earlier work also argued for a common evaluation protocol in epidemic forecasting ([Srivastava et al. 2021](https://arxiv.org/abs/2102.02842)).
+The progress in a scientific field is easier to measure when there exists a common protocol for evaluation.  EpiBenchmark mirrors similar effort in other fields such as [WeatherBench](https://arxiv.org/abs/2002.00469) and [WeatherBench 2](https://arxiv.org/abs/2308.15560), but is adapted to epidemiologic forecasting own challenges (such has revised surveillance data) and standards (probabilistic evaluation, [hubverse](https://hubverse.io/) format). Note that earlier work also argued for a common evaluation protocol in epidemic forecasting ([Srivastava et al. 2021](https://arxiv.org/abs/2102.02842)).
 
-### Real-time hubs
-Real-time collaborative hubs are and remain the gold standard for operational epidemiologic forecasting. They have shown the value of common forecast formats, shared targets, coordinated submissions, and centralized evaluation. Examples include [FluSight](https://github.com/cdcepi/FluSight-forecast-hub), [RSV Forecast Hub](https://github.com/CDCgov/rsv-forecast-hub), [COVID-19 Forecast Hub](https://github.com/CDCgov/covid19-forecast-hub), and [Flu MetroCast](https://github.com/reichlab/flu-metrocast).
+### EpiBenchMark vs Real-time hubs
+Real-time collaborative hubs are and remain the gold standard for operational epidemiologic forecasting. Examples include [FluSight](https://github.com/cdcepi/FluSight-forecast-hub), [RSV Forecast Hub](https://github.com/CDCgov/rsv-forecast-hub), [COVID-19 Forecast Hub](https://github.com/CDCgov/covid19-forecast-hub), and [Flu MetroCast](https://github.com/reichlab/flu-metrocast).
 
 But real-time hub evaluation is tied to ongoing submission cycles, changing data, and operational timelines. That makes comparison slower, harder to rerun, and less reproducible across studies. EpiBenchmark is intended to provide a faster benchmarking layer around these hubs, while staying compatible with their forecasting setup.
 
-### Hubverse
+### EpiBenchmark vs Hubverse
 
-EpiBenchmark is a thin layer on top of [Hubverse](https://hubverse.io/). Hubverse defines the data format and shared infrastructure. EpiBenchmark defines the benchmark tasks, frozen truth snapshots, scoring procedures, and scorecards. The goal is not to replace Hubverse, but to add a benchmark layer that makes evaluation faster to run, easier to reproduce, and easier to compare across models.
+EpiBenchmark is a thin layer on top of [Hubverse](https://hubverse.io/). Hubverse defines the data format and shared infrastructure. EpiBenchmark defines the benchmark tasks, frozen truth snapshots, scoring procedures, and scorecards. The goal is to add to hubverse a benchmark layer that makes evaluation faster to run, easier to reproduce, and easier to compare across models.
 
 ## EpiBenchmark in practice
 
