@@ -26,13 +26,14 @@ def score(config_path=None):
     # .target (str)
     # .model_info (dict[model name: list[paths to all CSVs]])
     # .baseline_model (str)
+    # .include_models (list)
     # .output_path (Path)
 
     logger.info("Validating model data...")
     model_dict, locations_list = extract_model_data_details(
         hub_path=config_object.hub_path,
         model_info=config_object.model_info,
-        baseline_model=config_object.baseline_model,
+        include_models=config_object.include_models,
         eval_start_date=config_object.evaluation_start_date,
         eval_end_date=config_object.evaluation_end_date,
         target=config_object.target
@@ -53,7 +54,7 @@ def score(config_path=None):
 
     # score! with scoringutils (R component)
     logging.info("Scoring model data...")
-    scorer = ScoringBridge(baseline_model=config_object.baseline_model)
+    scorer = ScoringBridge(baseline_model=config_object.baseline_model) # need to expose baseline model to calc rWIS
     scores = scorer.score_forecasts(df)
     
     # save locally and end

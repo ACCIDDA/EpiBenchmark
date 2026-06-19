@@ -185,6 +185,7 @@ class Config:
         - .evaluation_end_date
         - .target
         - .model_info
+        - .include_models
         - .baseline_model
         - .output_path 
         """
@@ -244,6 +245,21 @@ class Config:
         if not isinstance(self.config["baseline_model"], str):
             raise ValueError(f"`baseline_model` key must be a string/character. Received: {type(self.config['baseline_model'])}")
         self.baseline_model = self.config["baseline_model"]
+
+        # `include_models`-specific key check
+        include_models = []
+        if "include_models" in self.config:
+            if not isinstance(self.config['include_models'], list):
+                raise ValueError(f"`include_models` key must be a list. Received: {type(self.config['include_models'])}")
+            for model in self.config['include_models']:
+                include_models.append(model)
+            logger.info(f"Adding required baseline model {self.baseline_model} to models to process.")
+            include_models.append(self.baseline_model)
+            self.include_models = include_models
+        else:
+            logger.info(f"Adding required baseline model {self.baseline_model} to models to process.")
+            include_models.append(self.baseline_model)
+            self.include_models = include_models
         
         # `models`-specific key check
         if not isinstance(self.config['models'], dict) or not self.config['models']:
@@ -267,10 +283,6 @@ class Config:
             if len(data_files_list) < 1:
                 raise ValueError(f"Found no CSV files in path(s) in config `models` key.")
             model_info[model_name] = data_files_list
-        if self.baseline_model not in model_info:
-            logger.info(f"Adding required baseline model {self.baseline_model} to models to process.")
-            model_info[self.baseline_model] = "GET-BASELINE-MODEL"
-        self.model_info = model_info
 
         
         # `output_path`-specific key check
