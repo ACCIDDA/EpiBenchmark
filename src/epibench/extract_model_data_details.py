@@ -48,9 +48,10 @@ def extract_model_data_details(
             # attempt to connect to hub to pull all baseline model data at once
             try:
                 hub_connection = connect_hub(hub_path=hub_path)
-                data_return = hub_connection.get_dataset().to_table.to_pandas()
+                data_return = hub_connection.get_dataset().to_table().to_pandas()
             except Exception as e:
                 raise ConnectionError(f"Could not establish connection to hub {hub_path} to retreive baseline model data. Error: {e}")
+            data_return['target_end_date'] = pd.to_datetime(data_return['target_end_date'])
             # filter for baseline, dates, target, quantile output
             df = data_return[
                 (data_return['model_id'] == baseline_model) & 
