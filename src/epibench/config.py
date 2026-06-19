@@ -283,6 +283,7 @@ class Config:
             if len(data_files_list) < 1:
                 raise ValueError(f"Found no CSV files in path(s) in config `models` key.")
             model_info[model_name] = data_files_list
+        self.model_info = model_info
 
         
         # `output_path`-specific key check
