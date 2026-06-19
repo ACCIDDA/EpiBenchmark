@@ -2,13 +2,17 @@
 
 import logging
 import pandas as pd
+from pathlib import Path
+from hubdata import connect_hub
 
 REQUIRED_MODEL_DATA_COLUMNS = ['reference_date', 'target', 'horizon', 'target_end_date', 'location', 'output_type', 'output_type_id', 'value']
 logger = logging.getLogger(__name__)
 
 
 def extract_model_data_details(
+        hub_path: Path,
         model_info: dict, 
+        baseline_model: str,
         eval_start_date: str, 
         eval_end_date: str, 
         target: str
@@ -17,6 +21,7 @@ def extract_model_data_details(
     Iteratively pre-process model data; run more checks
 
     Args:
+        hub_path: A Path to the hub corresponding to model data.
         model_info: A dict where keys are model names and values are lists of
             paths to CSV files.
         eval_start_date: YYYY-MM-DD date when evaluation should begin
@@ -37,6 +42,35 @@ def extract_model_data_details(
     global_locations_list = []
     model_dict = {}
     for model in model_info:
+
+        # pathway for baseline model data (required processing, happens once per run)
+        if model == baseline_model:
+            # attempt to connect to hub to pull all baseline model data at once
+            try:
+                hub_connection = connect_hub(hub_path=hub_path)
+                data_return = hub_connection.get_dataset().to_table.to_pandas()
+            except Exception as e:
+                raise ConnectionError(f"Could not establish connection to hub {hub_path} to retreive baseline model data. Error: {e}")
+            # filter for baseline, dates, target, quantile output
+            df = data_return[
+                (data_return['model_id'] == baseline_model) & 
+                (data_return['target_end_date'].between(eval_start_date, eval_end_date)) & 
+                (data_return['target'] == target) & 
+                (data_return['output_type'] == 'quantile')
+            ]
+            if df.empty:
+                raise ValueError(
+                    f"Could not find baseline model quantile data for baseline model {baseline_model} "
+                    f"for target {target} between dates {eval_start_date} and {eval_end_date}."
+                )
+            # column renaming
+            df = df.rename(columns={'model_id': 'model', 'output_type_id': 'quantile_level', 'value': 'predicted'})
+            # add to global dict
+            model_dict[model] = df
+            # skip to next item in loop
+            continue
+
+        # pathway for their specified model data
         processed_dfs = [] # keep a model-level list of all dfs
         for csv_path in model_info[model]:
 
@@ -121,6 +155,10 @@ def extract_model_data_details(
         model_dict[model] = concatenated_df
 
     locations_list = list(set(global_locations_list))
+    # filter baseline model data to only include locations found in provided model data
+    if baseline_model in model_dict:
+        baseline_df = model_dict[baseline_model]
+        model_dict[baseline_model] = baseline_df[baseline_df['location'].isin(locations_list)]
     
     logger.info("Success ✅")
     return model_dict, locations_list

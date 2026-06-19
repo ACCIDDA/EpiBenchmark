@@ -6,7 +6,6 @@ import pandas as pd
 from .config import Config
 from .extract_model_data_details import extract_model_data_details
 from .ground_truth import GroundTruth
-from .gt_from_hub import hub_clone_setup
 from .scoring_bridge import ScoringBridge
 
 logging.basicConfig(level=logging.INFO)
@@ -26,11 +25,14 @@ def score(config_path=None):
     # .evaluation_end_date (str)
     # .target (str)
     # .model_info (dict[model name: list[paths to all CSVs]])
+    # .baseline_model (str)
     # .output_path (Path)
 
     logger.info("Validating model data...")
     model_dict, locations_list = extract_model_data_details(
+        hub_path=config_object.hub_path,
         model_info=config_object.model_info,
+        baseline_model=config_object.baseline_model,
         eval_start_date=config_object.evaluation_start_date,
         eval_end_date=config_object.evaluation_end_date,
         target=config_object.target

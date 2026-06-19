@@ -35,7 +35,6 @@ def setup(config_path=None):
         vintaging_method=config_object.vintaging_method
     )
     # gt_data will be a dict where keys are dates and values are csvs of gt data
-    # (unless vintaging is not being used, then the only key is just 'gt') 
 
     # build output dirs
     hash = "HASH-GOES-HERE" # TODO, hashing function create_hash()

@@ -185,6 +185,7 @@ class Config:
         - .evaluation_end_date
         - .target
         - .model_info
+        - .baseline_model
         - .output_path 
         """
         required_keys = {
@@ -193,6 +194,7 @@ class Config:
         "evaluation_end_date", 
         "target",
         "models", 
+        "baseline_model",
         "output_path"
         }
         if missing := (required_keys - set(self.config)):
@@ -237,6 +239,11 @@ class Config:
 
         # `target` key (no checks for now)
         self.target = self.config['target']
+
+        # `baseline_model`-specific key check
+        if not isinstance(self.config["baseline_model"], str):
+            raise ValueError(f"`baseline_model` key must be a string/character. Received: {type(self.config['baseline_model'])}")
+        self.baseline_model = self.config["baseline_model"]
         
         # `models`-specific key check
         if not isinstance(self.config['models'], dict) or not self.config['models']:
@@ -260,7 +267,11 @@ class Config:
             if len(data_files_list) < 1:
                 raise ValueError(f"Found no CSV files in path(s) in config `models` key.")
             model_info[model_name] = data_files_list
+        if self.baseline_model not in model_info:
+            logger.info(f"Adding required baseline model {self.baseline_model} to models to process.")
+            model_info[self.baseline_model] = "GET-BASELINE-MODEL"
         self.model_info = model_info
+
         
         # `output_path`-specific key check
         output_path = Path(self.config['output_path'])
