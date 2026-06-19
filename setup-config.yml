@@ -1,6 +1,6 @@
 ---
 
-hub: flusight" # must be one of 'flusight', 'flu metrocast', 'rsv', 'covid19'
+hub: "flusight" # must be one of 'flusight', 'flu metrocast', 'rsv', 'covid19'
 
 dates:
   start_date: "2026-01-01", 
