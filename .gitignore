@@ -22,3 +22,6 @@ hubs/
 site/
 test-configs/
 josephs_influpaint_guidance_files/
+output/
+results/
+trial/
