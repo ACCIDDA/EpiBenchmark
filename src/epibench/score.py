@@ -53,7 +53,7 @@ def score(config_path=None):
 
     # score! with scoringutils (R component)
     logging.info("Scoring model data...")
-    scorer = ScoringBridge()
+    scorer = ScoringBridge(baseline_model=config_object.baseline_model)
     scores = scorer.score_forecasts(df)
     
     # save locally and end
