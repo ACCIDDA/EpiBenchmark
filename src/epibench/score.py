@@ -6,7 +6,6 @@ import pandas as pd
 from .config import Config
 from .extract_model_data_details import extract_model_data_details
 from .ground_truth import GroundTruth
-from .gt_from_hub import hub_clone_setup
 from .scoring_bridge import ScoringBridge
 
 logging.basicConfig(level=logging.INFO)
@@ -21,28 +20,28 @@ def score(config_path=None):
     logger.info("Validating config...")
     config_object = Config(config_path=config_path, pipeline="score")
     # can reference config info with:
-    # .hub (str)
+    # .hub_path (Path)
     # .evaluation_start_date (str)
     # .evaluation_end_date (str)
     # .target (str)
-    # .model_info (dict)
+    # .model_info (dict[model name: list[paths to all CSVs]])
+    # .baseline_model (str)
+    # .include_models (list)
     # .output_path (Path)
 
     logger.info("Validating model data...")
     model_dict, locations_list = extract_model_data_details(
+        hub_path=config_object.hub_path,
         model_info=config_object.model_info,
+        include_models=config_object.include_models,
         eval_start_date=config_object.evaluation_start_date,
         eval_end_date=config_object.evaluation_end_date,
         target=config_object.target
     )
 
-    logger.info("Checking for hub...")
-    # clone hub if it does not exist, otherwise update it
-    hub_path = hub_clone_setup(hub=config_object.hub)
-
     logger.info("Retrieving and formatting ground truth data...")
     gto = GroundTruth(
-        hub_path=hub_path,
+        hub_path=config_object.hub_path,
         target=config_object.target,
         locations=locations_list,
         eval_start_date=config_object.evaluation_start_date,
@@ -55,11 +54,11 @@ def score(config_path=None):
 
     # score! with scoringutils (R component)
     logging.info("Scoring model data...")
-    scorer = ScoringBridge()
+    scorer = ScoringBridge(baseline_model=config_object.baseline_model) # need to expose baseline model to calc rWIS
     scores = scorer.score_forecasts(df)
     
     # save locally and end
     full_output_path = f"{config_object.output_path}/EpiBench_scores.csv" #TODO a hashing moment for naming as well?
-    scores.to_csv(full_output_path, index=False, encoding='utf-8-sig')
+    scores.to_csv(full_output_path, index=False, encoding='utf-8-sig') #TODO, this will overwrite files. likely want to fix
     logger.info("File executed successfully to end 🎉.")
     logger.info(f"Output file at {full_output_path}")

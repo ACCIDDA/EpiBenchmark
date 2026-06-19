@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import yaml
 
+from .gt_from_hub import hub_clone_setup
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +54,17 @@ class Config:
         A method to validate a config for the `setup` pipeline.
         
         Creates attributes for each key of the config:
-        - .hub
+        - .hub_path
+        - .targets
         - .dates
         - .vintaging
+        - .vintaging_method (None if not vintaging)
         - .output_path 
         """
 
         required_keys = {
-        "hub", 
+        "hub_path", 
+        "targets",
         "dates", 
         "vintaging", 
         "output_path"
@@ -68,15 +72,34 @@ class Config:
         if missing := (required_keys - set(self.config)):
             raise KeyError(f"Config file is missing required keys: {missing}")
         
-        # `hub`-specific key check
-        hub = self.config["hub"].lower()
-        if not hub in ['flusight', 'flu metrocast', 'rsv', 'covid19']:
-            raise ValueError(f"`hub` key must be exactly one of ['flusight', 'flu metrocast', 'rsv', 'covid19']. Received {hub}")
+        # `hub-path`-specific key check
+        if self.config["hub_path"].startswith(("http://", "https://")) and "github.com" in self.config["hub_path"]: # it's a GitHub repo URL
+            self.hub_path = hub_clone_setup(hub_url=self.config["hub_path"])
+        else: # treat it as a Path
+            hub_path = Path(self.config["hub_path"])
+            if not hub_path.is_dir():
+                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
+            target_data_dir = hub_path / 'target-data'
+            if not target_data_dir.is_dir():
+                raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
+            self.hub_path = hub_path
+
+        # `targets`-specific key check
+        # ensure list, ensure not empty
+        if isinstance(self.config["targets"], list):
+            if len(self.config["targets"]) == 0:
+                raise ValueError("`targets` key must be an unempty list.")
+            else:
+                targets = []
+                for target in self.config["targets"]:
+                    targets.append(target)
         else:
-            self.hub = hub
+            raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config["targets"])}'")
+        self.targets = self.config["targets"]
+        
 
         # `dates` -specific key check 
-        dates = self.config['dates'] # TODO ensure dates don't span more than 1 season? not sure how past seasons will interact with our git checkout logic 
+        dates = self.config['dates'] 
         if isinstance(dates, dict):
             # check for all keys
             required_date_keys = {"start_date", "end_date", "freq"}
@@ -138,12 +161,28 @@ class Config:
         if latest_date_obj > today:
             raise ValueError(f"Config `dates` key has date(s) that extend into the future. Latest date must be on or before today: {today}")
 
-        # `vintaging` -specific key check
+        # `vintaging` -specific key check, with `vintaging_method`
         vintaging = self.config['vintaging']
         if not isinstance(vintaging, bool):
             if not (isinstance(vintaging, str) and vintaging.lower() in ['true', 'false']):
                 raise ValueError(f"Config `vintaging` key must be a boolean. Received '{vintaging}'")
         self.vintaging = vintaging if isinstance(vintaging, bool) else vintaging.lower() == 'true'
+        # if we are doing vintaging, ensure the vintaging_method is set and valid
+        if (self.vintaging):
+            if 'vintaging_method' not in self.config:
+                raise ValueError(
+                    "`vintaging_method` key must be included if `vintaging` is set to TRUE.\n"
+                    "Options are:\nvintaging_method: 'as_of'\nvintaging_method: 'checkout'"
+                )
+            else:
+                if not isinstance(self.config["vintaging_method"], str):
+                    raise ValueError(f"`vintaging_method` key must be of type 'str'. Received: {type(self.config["vintaging_method"])}")
+                if not self.config["vintaging_method"].lower() in ["as_of", "checkout"]:
+                    raise ValueError(f"`vintaging_method` must be one of ['as_of', 'checkout']. Received: {self.config['vintaging_method']}")
+            self.vintaging_method = self.config["vintaging_method"]
+        else: # if we aren't doing vintaging at all, set the vintaging_method to None
+            self.vintaging_method = None
+
 
         # `output_path`-specific key check 
         output_path = Path(self.config['output_path'])
@@ -157,31 +196,41 @@ class Config:
         A method to validate a config for the `score` pipeline.
         
         Creates attributes for each key of the config:
-        - .hub
+        - .hub_path
         - .evaluation_start_date
         - .evaluation_end_date
         - .target
         - .model_info
+        - .include_models
+        - .baseline_model
         - .output_path 
         """
         required_keys = {
-        "hub", 
+        "hub_path", 
         "evaluation_start_date", 
         "evaluation_end_date", 
+        "target",
         "models", 
+        "baseline_model",
         "output_path"
         }
         if missing := (required_keys - set(self.config)):
             raise KeyError(f"Config file is missing required keys: {missing}")
         
-        # `hub`-specific key check
-        hub = self.config["hub"].lower()
-        if not hub in ['flusight', 'flu metrocast', 'rsv', 'covid19']:
-            raise ValueError(f"`hub` key must be exactly one of ['flusight', 'flu metrocast', 'rsv', 'covid19']. Received {hub}")
-        else:
-            self.hub = hub
+        # `hub-path`-specific key check
+        if self.config["hub_path"].startswith(("http://", "https://")) and "github.com" in self.config["hub_path"]: # it's a GitHub repo URL
+            self.hub_path = hub_clone_setup(hub_url=self.config["hub_path"])
+        else: # treat it as a Path
+            hub_path = Path(self.config["hub_path"])
+            if not hub_path.is_dir():
+                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
+            target_data_dir = hub_path / 'target-data'
+            if not target_data_dir.is_dir():
+                raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
+            self.hub_path = hub_path
         
         # `evaluation_start_date` and `evaluation_end_date`-specific key check
+        # ensure they can be coerced as dates
         try:
             start = datetime.strptime(self.config['evaluation_start_date'], "%Y-%m-%d")
             end = datetime.strptime(self.config['evaluation_end_date'], "%Y-%m-%d")
@@ -189,27 +238,69 @@ class Config:
             raise ValueError(
                 f"Invalid date format. Dates must be valid and formatted as YYYY-MM-DD. Error: {e}"
             )
+        # ensure neither date is in the future
+        current_date = datetime.now()
+        if start > current_date or end > current_date:
+            raise ValueError(
+                f"Date Range Error: Evaluation dates cannot be in the future. "
+                f"Received:\nstart: {self.config['evaluation_start_date']}\nend: {self.config['evaluation_end_date']}."
+            )
+        # ensure end is at least 7 days after start
         if end < start + timedelta(days=7):
             raise ValueError(
                 f"Date Range Error: End date ({self.config['evaluation_end_date']}) "
-                f"must be at least 7 days after start date ({self.config['evaluation_start_date']})."
+                f"must be at least 7 days AFTER start date ({self.config['evaluation_start_date']})."
             )
         self.evaluation_start_date = start
         self.evaluation_end_date = end
 
         # `target` key (no checks for now)
         self.target = self.config['target']
+
+        # `baseline_model`-specific key check
+        if not isinstance(self.config["baseline_model"], str):
+            raise ValueError(f"`baseline_model` key must be a string/character. Received: {type(self.config['baseline_model'])}")
+        self.baseline_model = self.config["baseline_model"]
+
+        # `include_models`-specific key check
+        include_models = []
+        if "include_models" in self.config:
+            if not isinstance(self.config['include_models'], list):
+                raise ValueError(f"`include_models` key must be a list. Received: {type(self.config['include_models'])}")
+            for model in self.config['include_models']:
+                include_models.append(model)
+            logger.info(f"Adding required baseline model {self.baseline_model} to models to process.")
+            include_models.append(self.baseline_model)
+            self.include_models = include_models
+        else:
+            logger.info(f"Adding required baseline model {self.baseline_model} to models to process.")
+            include_models.append(self.baseline_model)
+            self.include_models = include_models
         
         # `models`-specific key check
         if not isinstance(self.config['models'], dict) or not self.config['models']:
             raise ValueError("The 'models' key must be a non-empty dictionary of {'name': 'path'}.")
-        for model_name, data_path in self.config['models'].items():
-            p = Path(data_path)
-            if p.suffix.lower() != '.csv':
-                raise ValueError(f"Model '{model_name}' path must be a .csv file. Received: {data_path}")
-            if not p.exists():
-                raise FileNotFoundError(f"CSV for model '{model_name}' not found at: {data_path}")
-        self.model_info = self.config['models']
+        model_info = {}
+        for model_name, path in self.config['models'].items():
+            data_files_list = []
+            p = Path(path)
+            if not p.exists(): # if path doesn't exist, throw an error
+                raise FileNotFoundError(f"Path specified for '{model_name}' does not exist. Path {path}")
+            elif p.suffix.lower() == '.csv': # if it's just one csv path, add it 
+                data_files_list.append(p)
+            elif p.is_dir(): # if it's a dir path, add all csvs
+                data_files_list.extend(p.glob('*.csv'))
+            else: # if none, raise error
+                raise ValueError(
+                    f"Path specified for '{model_name}' must either point to a "
+                    f"directory of .csv files, or a single .csv file. "
+                    f"Received: {path}"
+                )
+            if len(data_files_list) < 1:
+                raise ValueError(f"Found no CSV files in path(s) in config `models` key.")
+            model_info[model_name] = data_files_list
+        self.model_info = model_info
+
         
         # `output_path`-specific key check
         output_path = Path(self.config['output_path'])
