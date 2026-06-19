@@ -20,3 +20,4 @@ venv/
 # Other
 hubs/
 site/
+test-configs/
