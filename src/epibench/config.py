@@ -31,7 +31,7 @@ class Config:
         # Load YAML config
         with open(self.config_path, 'r') as f:
             self.config = yaml.safe_load(f)
-        
+        print(self.config)
         # Base directory
         # All relative paths will be resolved relative to the config file location.
         self.base_dir = self.config_path.parent
@@ -78,7 +78,7 @@ class Config:
         else: # treat it as a Path
             hub_path = Path(self.config["hub_path"])
             if not hub_path.is_dir():
-                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
+                raise ValueError(f"`hub_path` ({self.config['hub_path']}) either does not exist on this machine or does not point to a directory.")
             target_data_dir = hub_path / 'target-data'
             if not target_data_dir.is_dir():
                 raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
@@ -94,7 +94,7 @@ class Config:
                 for target in self.config["targets"]:
                     targets.append(target)
         else:
-            raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config["targets"])}'")
+            raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config['targets'])}'")
         self.targets = self.config["targets"]
         
 
@@ -176,7 +176,7 @@ class Config:
                 )
             else:
                 if not isinstance(self.config["vintaging_method"], str):
-                    raise ValueError(f"`vintaging_method` key must be of type 'str'. Received: {type(self.config["vintaging_method"])}")
+                    raise ValueError(f"`vintaging_method` key must be of type 'str'. Received: {type(self.config['vintaging_method'])}")
                 if not self.config["vintaging_method"].lower() in ["as_of", "checkout"]:
                     raise ValueError(f"`vintaging_method` must be one of ['as_of', 'checkout']. Received: {self.config['vintaging_method']}")
             self.vintaging_method = self.config["vintaging_method"]
@@ -223,7 +223,7 @@ class Config:
         else: # treat it as a Path
             hub_path = Path(self.config["hub_path"])
             if not hub_path.is_dir():
-                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
+                raise ValueError(f"`hub_path` ({self.config['hub_path']}) either does not exist on this machine or does not point to a directory.")
             target_data_dir = hub_path / 'target-data'
             if not target_data_dir.is_dir():
                 raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
