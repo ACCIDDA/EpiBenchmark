@@ -41,7 +41,7 @@ def _extra_models(
     if df.empty:
         raise ValueError(
             f"Could not find model quantile data for model {model_name} "
-            f"for target {target} between dates {eval_start_date} and {eval_end_date}. "
+            f"for target '{target}' between dates {eval_start_date.date()} and {eval_end_date.date()}. "
             f"Searched for locations found in provided model data: {locations}"
         )
     # column renaming
