@@ -5,6 +5,7 @@ repo_url: https://github.com/ACCIDDA/EpiBenchmark
 repo_name: ACCIDDA/EpiBench
 exclude_docs: |
   design.md
+  api/
 
 theme:
   name: material
@@ -25,12 +26,10 @@ theme:
     - content.code.copy
 
 plugins:
-  - search
   - mkdocstrings:
       handlers:
         python:
-          paths:
-            - src
+          paths: ["src"]
           options:
             show_root_heading: true
             show_source: false
