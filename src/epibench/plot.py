@@ -3,7 +3,6 @@
 from .config import Config
 
 import logging
-import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,7 +10,7 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
-from .benchmark_plotting import plot_components, plot_timeseries, plot_wis_heatmap, plot_cumulative_timeseries, plot_multi_location_stacked, print_ladderboard
+from .benchmark_plotting import plot_components, plot_timeseries, plot_wis_heatmap, plot_cumulative_timeseries, plot_multi_location_stacked
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,6 +40,9 @@ def plot(config_path=None):
         pipeline="plot"
     )
 
+    # Create plots output directory if needed
+    config_object.plot_output_dir.mkdir(parents=True, exist_ok=True)
+
     # Load score CSV
     logger.info("Loading CSV data...")
 
@@ -52,8 +54,6 @@ def plot(config_path=None):
     #print(config_object.score_file_path)
     #print(config_object.plot_output_dir)
     #print('df\n', score_df.head(2))
-
-    #sys.exit() #breakpoint
 
     score_df['target_end_date'] = pd.to_datetime(score_df['target_end_date'])
     score_df['location'] = score_df['location'].astype(str).str.strip()

@@ -19,8 +19,7 @@ class Config:
             raise ValueError(f"'pipeline' param must be one of {valid_pipelines}. Received '{pipeline}'.")
         self.pipeline = pipeline.lower()
 
-        # Validate config path
-        self.config_path = Path(config_path).resolve()
+        self.config_path = Path(config_path)
 
         # path confirmations (exists, correct type)
         if not self.config_path.exists():
@@ -32,10 +31,6 @@ class Config:
         with open(self.config_path, 'r') as f:
             self.config = yaml.safe_load(f)
         
-        # Base directory
-        # All relative paths will be resolved relative to the config file location.
-        self.base_dir = self.config_path.parent
-
         logger.info("Validating config...")
 
         # Pipeline-specific validation
@@ -78,7 +73,7 @@ class Config:
         else: # treat it as a Path
             hub_path = Path(self.config["hub_path"])
             if not hub_path.is_dir():
-                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
+                raise ValueError(f"`hub_path` ({self.config['hub_path']}) either does not exist on this machine or does not point to a directory.")
             target_data_dir = hub_path / 'target-data'
             if not target_data_dir.is_dir():
                 raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
@@ -94,7 +89,7 @@ class Config:
                 for target in self.config["targets"]:
                     targets.append(target)
         else:
-            raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config["targets"])}'")
+            raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config['targets'])}'")
         self.targets = self.config["targets"]
         
 
@@ -176,7 +171,7 @@ class Config:
                 )
             else:
                 if not isinstance(self.config["vintaging_method"], str):
-                    raise ValueError(f"`vintaging_method` key must be of type 'str'. Received: {type(self.config["vintaging_method"])}")
+                    raise ValueError(f"`vintaging_method` key must be of type 'str'. Received: {type(self.config['vintaging_method'])}")
                 if not self.config["vintaging_method"].lower() in ["as_of", "checkout"]:
                     raise ValueError(f"`vintaging_method` must be one of ['as_of', 'checkout']. Received: {self.config['vintaging_method']}")
             self.vintaging_method = self.config["vintaging_method"]
@@ -223,7 +218,7 @@ class Config:
         else: # treat it as a Path
             hub_path = Path(self.config["hub_path"])
             if not hub_path.is_dir():
-                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
+                raise ValueError(f"`hub_path` ({self.config['hub_path']}) either does not exist on this machine or does not point to a directory.")
             target_data_dir = hub_path / 'target-data'
             if not target_data_dir.is_dir():
                 raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
@@ -314,13 +309,13 @@ class Config:
 
         Expected YAML structure:
         data:
-          score_file_path: "EpiBench_scores.csv"
+          score_file_path: <path_to_csv_file>
 
-        paths:
-          plot_output_dir: "results"
+        plot_paths:
+          plot_output_dir: <path_to_save_plots>
         """
         # Validate top-level sections
-        required_sections = {"data", "paths"}
+        required_sections = {"data", "plot_paths"}
 
         missing = required_sections - set(self.config)
 
@@ -330,13 +325,13 @@ class Config:
         # Validate score_file_path
         data_config = self.config["data"]
 
-        if "score_file_path" not in data_config:
+        score_file_path = data_config.get("score_file_path")
+
+        if not score_file_path:
             raise KeyError("Missing required key: data.score_file_path")
-
-        score_file_path = data_config["score_file_path"]
-
-        # Resolve relative to config file
-        self.score_file_path = (self.base_dir / score_file_path).resolve()
+        
+        # Creat attribute socre_file_path
+        self.score_file_path = Path(score_file_path).expanduser().resolve()
 
         # Path must exist
         if not self.score_file_path.exists():
@@ -345,27 +340,29 @@ class Config:
         # Must be a file
         if not self.score_file_path.is_file():
             raise ValueError(f"score_file_path must be a file. Received: {self.score_file_path}")
+        
+        # Must be a CSV file
+        if self.score_file_path.suffix.lower() != ".csv":
+            raise ValueError(f"score_file_path must be a CSV file. Received: {self.score_file_path}.")
 
-        logger.info(
-            f"Validated score file: {self.score_file_path}.")
+        logger.info(f"Validated score file: {self.score_file_path}.")
 
         # Validate plot_output_dir
-        paths_config = self.config["paths"]
+        plot_paths_config = self.config["plot_paths"]
 
-        if "plot_output_dir" not in paths_config:
-            raise KeyError("Missing required key: paths.plot_output_dir")
+        plot_output_dir = plot_paths_config.get("plot_output_dir")
 
-        plot_output_dir = paths_config["plot_output_dir"]
+        if not plot_output_dir:
+            raise KeyError("Missing required key: plot_paths.plot_output_dir.")
 
-        # Resolve relative to config file
-        self.plot_output_dir = (self.base_dir / plot_output_dir).resolve()
+        plot_output_dir = plot_paths_config["plot_output_dir"]
 
-        # Create directory if missing
-        self.plot_output_dir.mkdir(parents=True, exist_ok=True)
+        # Create attriute plot_out_dir
+        self.plot_output_dir = Path(plot_output_dir).expanduser().resolve()
 
-        # Must be directory
-        if not self.plot_output_dir.is_dir():
-            raise ValueError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}")
+        # If path exists, it must be a directory
+        if self.plot_output_dir.exists() and not self.plot_output_dir.is_dir():
+            raise NotADirectoryError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}.")
 
         logger.info(
             f"Validated plot output directory: {self.plot_output_dir}")
