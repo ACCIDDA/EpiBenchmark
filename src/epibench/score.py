@@ -58,7 +58,7 @@ def score(config_path=None):
     scores = scorer.score_forecasts(df)
     
     # save locally and end
-    full_output_path = f"{config_object.output_path}/EpiBench_scores.csv" #TODO a hashing moment for naming as well?
+    full_output_path = f"{config_object.output_path}/EpiBenchmark_scores.csv" #TODO a hashing moment for naming as well?
     scores.to_csv(full_output_path, index=False, encoding='utf-8-sig') #TODO, this will overwrite files. likely want to fix
     logger.info("File executed successfully to end 🎉.")
     logger.info(f"Output file at {full_output_path}")
