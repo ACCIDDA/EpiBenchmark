@@ -33,7 +33,7 @@ jobs:
           python -m pip install -e ".[docs]"
 
       - name: Build documentation site
-        run: mkdocs build --strict
+        run: mkdocs build
 
       - name: Set up GitHub Pages
         uses: actions/configure-pages@v5

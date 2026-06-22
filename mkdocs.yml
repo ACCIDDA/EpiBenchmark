@@ -25,12 +25,10 @@ theme:
     - content.code.copy
 
 plugins:
-  - search
   - mkdocstrings:
       handlers:
         python:
-          paths:
-            - src
+          paths: ["src"]
           options:
             show_root_heading: true
             show_source: false
