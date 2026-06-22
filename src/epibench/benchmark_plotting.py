@@ -166,6 +166,7 @@ def plot_components(df: pd.DataFrame,
     
     # Aggregate data
     plot_data = df.groupby(group_by, as_index=False).agg(agg_func)
+    #print('plot component plot data=============>>\n', plot_data) #debug
     
     # Sort by specified column or total
     if sort_by is None:
@@ -334,6 +335,10 @@ def plot_timeseries(df: pd.DataFrame,
         axes = [ax]
         facet_vals = [None]
     
+    # NEW addition
+    all_groups = sorted(df[group_col].unique())
+    group_indices = {g: i for i, g in enumerate(all_groups)}
+
     # Plot data
     for i, facet_val in enumerate(facet_vals):
         ax = axes[i] if i < len(axes) else None
@@ -348,14 +353,16 @@ def plot_timeseries(df: pd.DataFrame,
             subplot_title = title
         
         # Track styling indices for consistency
-        group_indices = {}
+        #group_indices = {}
         
+        
+
         for group_val in facet_data[group_col].unique():
             group_data = facet_data[facet_data[group_col] == group_val].sort_values(x_col)
             
             # Get styling
-            if group_val not in group_indices:
-                group_indices[group_val] = len(group_indices)
+            #if group_val not in group_indices:
+            #    group_indices[group_val] = len(group_indices)
             
             group_idx = group_indices[group_val]
             
@@ -371,7 +378,7 @@ def plot_timeseries(df: pd.DataFrame,
                 linestyle = '-'
             
             # Only show legend on first subplot
-            label = group_val if i == 0 else None
+            label = group_val# if i == 0 else None
             
             ax.plot(group_data[x_col], group_data[y_col], 
                    color=color, label=label, marker=marker, markersize=4,
@@ -387,16 +394,40 @@ def plot_timeseries(df: pd.DataFrame,
             ax.set_ylabel(y_col.upper())
         
         # Only show legend on first subplot - make it transparent and overlay on plot
-        if i == 0:
-            legend = ax.legend(loc='upper right', framealpha=0.8, fancybox=True, 
-                             bbox_to_anchor=(0.98, 0.98), fontsize=8)
-            legend.get_frame().set_facecolor('white')
-            legend.get_frame().set_edgecolor('gray')
-            legend.get_frame().set_linewidth(0.5)
+        #if i == 0:
+        #    legend = ax.legend(loc='upper right', framealpha=0.8, fancybox=True, 
+        #                     bbox_to_anchor=(0.98, 0.98), fontsize=8)
+        #    legend.get_frame().set_facecolor('white')
+        #    legend.get_frame().set_edgecolor('gray')
+        #    legend.get_frame().set_linewidth(0.5)
+    
     
     # Hide empty subplots
     for j in range(len(facet_vals), len(axes)):
         axes[j].set_visible(False)
+
+    # Create one shared legend for the whole figure
+    # Collect handles/labels from ALL axes
+    all_handles = []
+    all_labels = []
+
+    for ax in axes:
+        handles, labels = ax.get_legend_handles_labels()
+    
+        for h, l in zip(handles, labels):
+            if l not in all_labels:
+                all_handles.append(h)
+                all_labels.append(l)
+    
+    fig.legend(
+        all_handles,
+        all_labels,
+        loc='upper center',
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=min(len(all_labels), 3),
+        frameon=True,
+        fontsize=9
+    )
     
     plt.suptitle(title)
     plt.tight_layout()
@@ -471,13 +502,14 @@ def plot_wis_heatmap(df: pd.DataFrame, location_filter: str, title: str,
         else:
             locs = df['location'].unique()
         plot_data = df[df['location'].isin(locs)].copy()
-        plot_data = plot_data.groupby(['model', 'group', 'season', 'target_end_date', 'horizon'], as_index=False)['wis'].sum()
+        #plot_data = plot_data.groupby(['model', 'group', 'season', 'target_end_date', 'horizon'], as_index=False)['wis'].sum()
+        plot_data = plot_data.groupby(['model', 'group', 'target_end_date', 'horizon'], as_index=False)['wis'].sum() #remove column season
     else:
         plot_data = df.copy()
     
-    print('input df in benchmark plotting\n', df.head(2)) #debug
+    #print('input df in benchmark plotting\n', df.head(2)) #debug
 
-    print('plot data in benchmark plotting\n', plot_data.head(2)) #debug
+    #print('plot data in benchmark plotting\n', plot_data.head(2)) #debug
     if plot_data.empty:
         print(f"No data for heatmap: {title}")
         return
@@ -507,7 +539,7 @@ def plot_wis_heatmap(df: pd.DataFrame, location_filter: str, title: str,
     
     # Sort by mean score
     pivot_data = pivot_data.loc[pivot_data.mean(axis=1, skipna=True).sort_values().index]
-    print('pivot data in benchmark plotting\n', pivot_data)
+    #print('pivot data in benchmark plotting\n', pivot_data) #debug
     
     # Get missing info if function provided
     missing_info = {}
