@@ -1,5 +1,5 @@
 data:
-  score_file_path: "EpiBench_scores.csv"
+  score_file_path: C:/Users/lyue/Documents/EpiBench/EpiBench_scores.csv
 
-paths:
-  plot_output_dir: "results"
+plot_paths:
+  plot_output_dir: C:/Users/lyue/Documents/EpiBench/results
