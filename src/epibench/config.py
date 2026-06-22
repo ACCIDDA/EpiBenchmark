@@ -353,7 +353,7 @@ class Config:
         plot_output_dir = plot_paths_config.get("plot_output_dir")
 
         if not plot_output_dir:
-            raise KeyError("Missing required key: paths.plot_output_dir.")
+            raise KeyError("Missing required key: plot_paths.plot_output_dir.")
 
         plot_output_dir = plot_paths_config["plot_output_dir"]
 
