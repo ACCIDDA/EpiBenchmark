@@ -234,9 +234,9 @@ class Config:
         """
         Validate config for the `plot` pipeline.
 
-        Expected YAML structure:
-          score_file_path: "EpiBenchmark_scores.csv"
-          output_path: "results"
+        Will change, but currently creates attributes:
+        - .score_file_path
+        _ .output_path
         """
         required_keys = {"score_file_path", "output_path"}
         missing = required_keys - set(self.config)
@@ -245,32 +245,19 @@ class Config:
 
         score_file_path = self.config["score_file_path"]
 
-        # Resolve relative to config file
+        # `score_file_path`-specific key checks
         self.score_file_path = (self.base_dir / score_file_path).resolve()
-
-        # Path must exist
         if not self.score_file_path.exists():
             raise FileNotFoundError(f"Score file not found: {self.score_file_path}")
-
-        # Must be a file
         if not self.score_file_path.is_file():
             raise ValueError(f"score_file_path must be a file. Received: {self.score_file_path}")
+        # logger.info(
+            #f"Validated score file: {self.score_file_path}.")
+        # TODO, column checks here, read in as pd.DataFrame
 
-        logger.info(
-            f"Validated score file: {self.score_file_path}.")
-
-        # Validate output_path
+        # `output_path`-specific key checks
         output_path = self.config["output_path"]
-
-        # Resolve relative to config file
         self.plot_output_dir = (self.base_dir / output_path).resolve()
-
-        # Create directory if missing
         self.plot_output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Must be directory
         if not self.plot_output_dir.is_dir():
             raise ValueError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}")
-
-        logger.info(
-            f"Validated plot output directory: {self.plot_output_dir}")
