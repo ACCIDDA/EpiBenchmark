@@ -15,8 +15,7 @@ dependencies = [
     "PyYAML>=6.0",
     "pygit2",
     "hubdata",
-    "matplotlib>=3.7",
-    "plotly>=5.18"
+    "matplotlib>=3.7"
 ]
 
 [tool.setuptools]
