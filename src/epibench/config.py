@@ -235,27 +235,15 @@ class Config:
         Validate config for the `plot` pipeline.
 
         Expected YAML structure:
-        data:
-          score_file_path: "EpiBench_scores.csv"
-
-        paths:
-          plot_output_dir: "results"
+          score_file_path: "EpiBenchmark_scores.csv"
+          output_path: "results"
         """
-        # Validate top-level sections
-        required_sections = {"data", "paths"}
-
-        missing = required_sections - set(self.config)
-
+        required_keys = {"score_file_path", "output_path"}
+        missing = required_keys - set(self.config)
         if missing:
-            raise KeyError(f"Missing required config sections: {missing}.")
+            raise KeyError(f"Config file is missing required keys: {missing}")
 
-        # Validate score_file_path
-        data_config = self.config["data"]
-
-        if "score_file_path" not in data_config:
-            raise KeyError("Missing required key: data.score_file_path")
-
-        score_file_path = data_config["score_file_path"]
+        score_file_path = self.config["score_file_path"]
 
         # Resolve relative to config file
         self.score_file_path = (self.base_dir / score_file_path).resolve()
@@ -271,16 +259,11 @@ class Config:
         logger.info(
             f"Validated score file: {self.score_file_path}.")
 
-        # Validate plot_output_dir
-        paths_config = self.config["paths"]
-
-        if "plot_output_dir" not in paths_config:
-            raise KeyError("Missing required key: paths.plot_output_dir")
-
-        plot_output_dir = paths_config["plot_output_dir"]
+        # Validate output_path
+        output_path = self.config["output_path"]
 
         # Resolve relative to config file
-        self.plot_output_dir = (self.base_dir / plot_output_dir).resolve()
+        self.plot_output_dir = (self.base_dir / output_path).resolve()
 
         # Create directory if missing
         self.plot_output_dir.mkdir(parents=True, exist_ok=True)

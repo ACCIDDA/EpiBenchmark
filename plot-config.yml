@@ -1,5 +1,5 @@
-data:
-  score_file_path: "EpiBench_scores.csv"
+---
 
-paths:
-  plot_output_dir: "results"
+score_file_path: "/Users/emprzy/Desktop/EpiBenchmark_scores.csv"
+
+output_path: "/Users/emprzy/Desktop"
