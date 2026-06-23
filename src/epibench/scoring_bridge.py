@@ -42,13 +42,15 @@ write.csv(scores, output_csv, row.names = FALSE)
 class ScoringBridge:
     """Run scoringutils via an external Rscript process."""
 
-    def __init__(self, rscript_executable: str | None = None):
+    def __init__(self, baseline_model: str, rscript_executable: str | None = None):
+        self.baseline_model = baseline_model
         self.rscript_executable = rscript_executable or shutil.which("Rscript")
         if not self.rscript_executable:
             raise RuntimeError(
                 "Could not find `Rscript` on PATH. Install R and ensure `Rscript` is available."
             )
 
+    # score with R scoringutils
     def score_forecasts(self, data: pd.DataFrame) -> pd.DataFrame:
         """Score forecast data using scoringutils in a subprocess."""
         payload = data.copy()
@@ -99,5 +101,27 @@ class ScoringBridge:
             if not output_path.exists():
                 raise RuntimeError("R scoring process completed without producing an output file.")
 
+            # add rwis as a column by comparing each entry with the baseline model
+            output = pd.read_csv(output_path)
+            baseline_scores = output[output['model'] == self.baseline_model]
+            if baseline_scores.empty:
+                output["rwis"] = pd.NA
+            else:
+                join_cols = [
+                    "reference_date",
+                    "target_end_date",
+                    "location",
+                    "horizon",
+                ]
+                baseline_wis = baseline_scores[join_cols + ["wis"]].rename(
+                    columns={"wis": "baseline_wis"}
+                )
+                output = output.merge(baseline_wis, on=join_cols, how="left")
+                output["rwis"] = output["wis"].div(output["baseline_wis"]).where(
+                    output["baseline_wis"].notna() & output["baseline_wis"].ne(0)
+                )
+                output = output.drop(columns=["baseline_wis"])
+
+            # return output
             logger.info("Success ✅")
-            return pd.read_csv(output_path)
+            return output
