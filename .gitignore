@@ -19,5 +19,7 @@ venv/
 
 # Other
 hubs/
-site/
+josephs_influpaint_guidance_files/
 test-configs/
+site/
+
