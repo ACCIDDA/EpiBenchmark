@@ -18,6 +18,13 @@ dependencies = [
     "matplotlib>=3.7"
 ]
 
+[project.optional-dependencies]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25"
+]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
