@@ -165,7 +165,7 @@ def hub_clone_setup(hub_url: str) -> Path:
         repo_name = repo_name[:-4]
 
     # get project root direcotry
-    project_root = Path(__file__).resolve().parent[2]
+    project_root = Path(__file__).resolve().parents[2]
     # create hub folder under project root directory
     hubs_dir = project_root / "hubs"
     # create repo folder under hub folder
