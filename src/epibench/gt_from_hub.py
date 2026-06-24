@@ -164,10 +164,12 @@ def hub_clone_setup(hub_url: str) -> Path:
     if repo_name.endswith(".git"):
         repo_name = repo_name[:-4]
 
-    # construct paths
-    script_dir = Path(__file__).parent
-    hubs_dir = script_dir / "hubs" 
-    hub_path = hubs_dir / repo_name 
+    # get project root direcotry
+    project_root = Path(__file__).resolve().parent[2]
+    # create hub folder under project root directory
+    hubs_dir = project_root / "hubs"
+    # create repo folder under hub folder
+    hub_path = hubs_dir / repo_name
 
     # clone if it hasn't been yet, otherwise pull to update
     if hub_path.exists() and hub_path.is_dir():
