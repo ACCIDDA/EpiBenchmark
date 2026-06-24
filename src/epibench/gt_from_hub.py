@@ -91,7 +91,7 @@ def _asof_gt_fetch(
     to the as_of column.
 
     Args:
-        hub_path: Absolute path to clone of a hub/hub repo.
+        hub_path: Path to a local clone of a hub/hub repo.
         targets: List of targets to get gt data for.
         date_s: List of dates or single date (to match with as_of col).
 
