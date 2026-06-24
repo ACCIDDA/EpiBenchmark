@@ -115,7 +115,7 @@ class Config:
                 for target in self.config["targets"]:
                     targets.append(target)
         else:
-            raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config["targets"])}'")
+            raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config['targets'])}'")
         self.targets = self.config["targets"]
         
 
@@ -197,7 +197,7 @@ class Config:
                 )
             else:
                 if not isinstance(self.config["vintaging_method"], str):
-                    raise ValueError(f"`vintaging_method` key must be of type 'str'. Received: {type(self.config["vintaging_method"])}")
+                    raise ValueError(f"`vintaging_method` key must be of type 'str'. Received: {type(self.config['vintaging_method'])}")
                 if not self.config["vintaging_method"].lower() in ["as_of", "checkout"]:
                     raise ValueError(f"`vintaging_method` must be one of ['as_of', 'checkout']. Received: {self.config['vintaging_method']}")
             self.vintaging_method = self.config["vintaging_method"]
