@@ -48,6 +48,36 @@ class Config:
 
         logger.info("Success ✅")
 
+    def _resolve_config_path(self, path_value: str | Path) -> Path:
+        """
+        Resolve config-provided paths.
+
+        Relative paths are interpreted relative to the config file location.
+        Absolute paths are preserved.
+        """
+        path = Path(path_value).expanduser()
+        if not path.is_absolute():
+            path = self.base_dir / path
+        return path.resolve()
+
+    def _resolve_hub_path(self, hub_path_value: str) -> Path:
+        """
+        Resolve and validate a local hub path, or clone a GitHub URL.
+        """
+        if hub_path_value.startswith(("http://", "https://")) and "github.com" in hub_path_value:
+            return hub_clone_setup(hub_url=hub_path_value)
+
+        hub_path = self._resolve_config_path(hub_path_value)
+        if not hub_path.is_dir():
+            raise ValueError(
+                f"`hub_path` ({hub_path_value}) either does not exist on this machine "
+                "or does not point to a directory."
+            )
+        target_data_dir = hub_path / "target-data"
+        if not target_data_dir.is_dir():
+            raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
+        return hub_path
+
 
     def validate_setup_config(self):
         """
@@ -73,16 +103,7 @@ class Config:
             raise KeyError(f"Config file is missing required keys: {missing}")
         
         # `hub-path`-specific key check
-        if self.config["hub_path"].startswith(("http://", "https://")) and "github.com" in self.config["hub_path"]: # it's a GitHub repo URL
-            self.hub_path = hub_clone_setup(hub_url=self.config["hub_path"])
-        else: # treat it as a Path
-            hub_path = Path(self.config["hub_path"])
-            if not hub_path.is_dir():
-                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
-            target_data_dir = hub_path / 'target-data'
-            if not target_data_dir.is_dir():
-                raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
-            self.hub_path = hub_path
+        self.hub_path = self._resolve_hub_path(self.config["hub_path"])
 
         # `targets`-specific key check
         # ensure list, ensure not empty
@@ -185,7 +206,7 @@ class Config:
 
 
         # `output_path`-specific key check 
-        output_path = Path(self.config['output_path'])
+        output_path = self._resolve_config_path(self.config['output_path'])
         if output_path.exists() and not output_path.is_dir():
             raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
         self.output_path = output_path 
@@ -218,16 +239,7 @@ class Config:
             raise KeyError(f"Config file is missing required keys: {missing}")
         
         # `hub-path`-specific key check
-        if self.config["hub_path"].startswith(("http://", "https://")) and "github.com" in self.config["hub_path"]: # it's a GitHub repo URL
-            self.hub_path = hub_clone_setup(hub_url=self.config["hub_path"])
-        else: # treat it as a Path
-            hub_path = Path(self.config["hub_path"])
-            if not hub_path.is_dir():
-                raise ValueError(f"`hub_path` ({self.config["hub_path"]}) either does not exist on this machine or does not point to a directory.")
-            target_data_dir = hub_path / 'target-data'
-            if not target_data_dir.is_dir():
-                raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
-            self.hub_path = hub_path
+        self.hub_path = self._resolve_hub_path(self.config["hub_path"])
         
         # `evaluation_start_date` and `evaluation_end_date`-specific key check
         # ensure they can be coerced as dates
@@ -283,7 +295,7 @@ class Config:
         model_info = {}
         for model_name, path in self.config['models'].items():
             data_files_list = []
-            p = Path(path)
+            p = self._resolve_config_path(path)
             if not p.exists(): # if path doesn't exist, throw an error
                 raise FileNotFoundError(f"Path specified for '{model_name}' does not exist. Path {path}")
             elif p.suffix.lower() == '.csv': # if it's just one csv path, add it 
@@ -303,7 +315,7 @@ class Config:
 
         
         # `output_path`-specific key check
-        output_path = Path(self.config['output_path'])
+        output_path = self._resolve_config_path(self.config['output_path'])
         if output_path.exists() and not output_path.is_dir():
             raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
         self.output_path = output_path 
@@ -324,7 +336,7 @@ class Config:
         score_file_path = self.config["score_file_path"]
 
         # `score_file_path`-specific key checks
-        self.score_file_path = (self.base_dir / score_file_path).resolve()
+        self.score_file_path = self._resolve_config_path(score_file_path)
         if not self.score_file_path.exists():
             raise FileNotFoundError(f"Score file not found: {self.score_file_path}")
         if not self.score_file_path.is_file():
@@ -335,7 +347,7 @@ class Config:
 
         # `output_path`-specific key checks
         output_path = self.config["output_path"]
-        self.plot_output_dir = (self.base_dir / output_path).resolve()
+        self.plot_output_dir = self._resolve_config_path(output_path)
         self.plot_output_dir.mkdir(parents=True, exist_ok=True)
         if not self.plot_output_dir.is_dir():
             raise ValueError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}")
