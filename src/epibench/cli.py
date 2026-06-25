@@ -76,7 +76,7 @@ def plot(config_path: str | None) -> None:
     name="make-scorecard",
     short_help="Generate a scorecard from a library challenge or config file.",
     help=(
-        "Command to build a scorecard either from an EpiBenchmark library challenge "
+        "Command to build a scorecard either from a challenge in the EpiBenchmark library "
         "or from a user-provided configuration file."
     ),
 )
