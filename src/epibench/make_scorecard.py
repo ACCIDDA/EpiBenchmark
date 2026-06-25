@@ -8,6 +8,8 @@ from importlib import resources
 
 import click
 
+from .config import Config
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -45,39 +47,35 @@ def make_scorecard(
             raise click.UsageError(
                 "When using --config-path, do not provide challenge-name or --model-data-path."
             )
-        logger.info("Config-driven make-scorecard flow selected.")
-        # PLACEHOLDER
-        logger.info("make-scorecard skeleton completed successfully.")
-        return
+        logger.info("Validating config file...")
+        config_object = Config(config_path=config_path, pipeline="make-scorecard")
+        # TODO, score given model, call unique scorecard function, return score csv and score card entry for given model
+        pass
 
     # fail if user doesn't provide anything with `epibench make-scorecard`
-    if challenge_name is None and model_data_path is None:
+    elif challenge_name is None and model_data_path is None:
         raise click.UsageError(
             "Provide either <challenge-name> with --model-data-path or --config-path."
         )
     # fail if user doesn't provide the challenge name
-    if challenge_name is None:
+    elif challenge_name is None:
         raise click.UsageError(
             "A library challenge name is required when using --model-data-path."
         )
     # fail if user doesn't provide --model-data-path
-    if model_data_path is None:
+    elif model_data_path is None:
         raise click.UsageError(
             "--model-data-path is required when using a library challenge."
         )
+    else:
+        logger.info("Loading challenge library...")
+        library_challenges = _load_library_challenges()
+        if challenge_name not in library_challenges:
+            raise click.ClickException(
+                "that challenge is not in the EpiBenchmark challenge library"
+            )
+        logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
+        # TODO, score given model, call unique scorecard function, return score csv and score card entry for given model
+        pass
 
-    # if attempting to use a pre-made EpiBenchmark challenge, fail if the challenge name isn't in our library
-    logger.info("Library challenge make-scorecard flow selected.")
-    logger.info("Loading bundled challenge library...")
-    library_challenges = _load_library_challenges()
-    if challenge_name not in library_challenges:
-        raise click.ClickException(
-            "that challenge is not in the EpiBenchmark challenge library"
-        )
-
-    # doing a pre-made EpiBenchmark challenge
-    logger.info(f"Validated library challenge: {challenge_name}")
-    logger.info(f"Model data path received: {model_data_path}")
-    # Placeholder for future library-challenge scorecard generation.
     logger.info("make-scorecard skeleton completed successfully.")
-    return

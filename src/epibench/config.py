@@ -1,8 +1,8 @@
 """Validate YAML configuration file input."""
 
 import logging
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 import yaml
 
 from .gt_from_hub import hub_clone_setup
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class Config:
     def __init__(self, config_path: str, pipeline: str):
 
-        valid_pipelines = ["setup", "score", "plot"]
+        valid_pipelines = ["setup", "score", "plot", "make-scorecard"]
 
         if pipeline.lower() not in valid_pipelines:
             raise ValueError(f"'pipeline' param must be one of {valid_pipelines}. Received '{pipeline}'.")
@@ -43,6 +43,8 @@ class Config:
             self.validate_score_config()
         elif self.pipeline == "plot":
             self.validate_plot_config()
+        elif self.pipeline == "make-scorecard":
+            self.validate_make_scorecard_config()
 
         logger.info("Success ✅")
 
@@ -339,9 +341,6 @@ class Config:
             raise FileNotFoundError(f"Score file not found: {self.score_file_path}")
         if not self.score_file_path.is_file():
             raise ValueError(f"score_file_path must be a file. Received: {self.score_file_path}")
-        # logger.info(
-            #f"Validated score file: {self.score_file_path}.")
-        # TODO, column checks here, read in as pd.DataFrame
 
         # `output_path`-specific key checks
         output_path = self.config["output_path"]
@@ -349,3 +348,12 @@ class Config:
         self.plot_output_dir.mkdir(parents=True, exist_ok=True)
         if not self.plot_output_dir.is_dir():
             raise ValueError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}")
+
+    def validate_make_scorecard_config(self):
+        """
+        Validate config for the `make-scorecard` pipeline.
+
+        Config for make-scorecard is currently undefined and will fill in later
+        """
+        logger.info("no config checks yet") # TODO
+        logger.info("Success ✅")

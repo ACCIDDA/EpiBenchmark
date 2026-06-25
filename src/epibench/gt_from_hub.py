@@ -141,7 +141,7 @@ def _asof_gt_fetch(
         valid_vintages = gt[gt['as_of'] <= date_s_obj]
         if valid_vintages.empty:
             raise ValueError(
-                f"Could find no groudn truth data on or before {date_s} included in your span of dates. "
+                f"Could find no ground truth data on or before {date_s} included in your span of dates. "
                 "Please ensure your dates do not extend outside of hub existence or into the future."
             )
         closest_date = valid_vintages['as_of'].max()
