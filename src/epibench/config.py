@@ -83,6 +83,7 @@ class Config:
         
         Creates attributes for each key of the config:
         - .hub_path
+        - .challenge_name
         - .targets
         - .dates
         - .vintaging
@@ -92,6 +93,7 @@ class Config:
 
         required_keys = {
         "hub_path", 
+        "challenge_name",
         "targets",
         "dates", 
         "vintaging", 
@@ -102,6 +104,10 @@ class Config:
         
         # `hub-path`-specific key check
         self.hub_path = self._resolve_hub_path(self.config["hub_path"])
+
+        #`challenge_name`-specific key check (no checks right now)
+        # ensure it is a str
+        self.challenge_name = str(self.config["challenge_name"])
 
         # `targets`-specific key check
         # ensure list, ensure not empty
