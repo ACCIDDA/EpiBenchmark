@@ -72,6 +72,42 @@ def plot(config_path: str | None) -> None:
     run_plot(config_path=config_path)
 
 
+@cli.command(
+    name="make-scorecard",
+    short_help="Generate a scorecard from a library challenge or config file.",
+    help=(
+        "Command to build a scorecard either from an EpiBenchmark library challenge "
+        "or from a user-provided configuration file."
+    ),
+)
+@click.argument("challenge_name", required=False)
+@click.option(
+    "--model-data-path",
+    type=str,
+    required=False,
+    help="Absolute path to the model data to process with a library challenge.",
+)
+@click.option(
+    "--config-path",
+    type=str,
+    required=False,
+    help="Absolute path to a configuration file for custom scorecard generation.",
+)
+def make_scorecard(
+    challenge_name: str | None,
+    model_data_path: str | None,
+    config_path: str | None,
+) -> None:
+    """Run the EpiBench make-scorecard pipeline."""
+    from .make_scorecard import make_scorecard as run_make_scorecard
+
+    run_make_scorecard(
+        challenge_name=challenge_name,
+        model_data_path=model_data_path,
+        config_path=config_path,
+    )
+
+
 def main(argv: list[str] | None = None) -> int | None:
     """Run the top-level CLI."""
     return cli.main(args=argv, prog_name="epibench")
