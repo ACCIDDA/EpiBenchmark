@@ -19,6 +19,7 @@ def setup(config_path=None):
     config_object = Config(config_path=config_path, pipeline="setup")
     # can reference config info with:
     # .hub_path (Path)
+    # .challenge_name(str)
     # .targets (list)
     # .dates (list of dates as strs)
     # .vintaging (bool)
