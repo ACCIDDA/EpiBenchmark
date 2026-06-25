@@ -36,8 +36,6 @@ class Config:
         # All relative paths will be resolved relative to the config file location.
         self.base_dir = self.config_path.parent
 
-        logger.info("Validating config...")
-
         # Pipeline-specific validation
         if self.pipeline == "setup":
             self.validate_setup_config()
