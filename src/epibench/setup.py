@@ -30,7 +30,8 @@ def setup(config_path=None):
     gt_data = gt_from_hub(
         hub_path=config_object.hub_path,
         targets=config_object.targets,
-        dates=config_object.dates,
+        reference_dates=config_object.dates,
+        data_cutoff_dates=config_object.gt_cutoff_dates,
         vintaging=config_object.vintaging,
         vintaging_method=config_object.vintaging_method
     )

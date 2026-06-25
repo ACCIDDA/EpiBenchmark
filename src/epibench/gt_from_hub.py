@@ -188,7 +188,8 @@ def hub_clone_setup(hub_url: str) -> Path:
 def gt_from_hub(
         hub_path: Path, 
         targets: list, 
-        dates: list, 
+        reference_dates: list,
+        data_cutoff_dates: list,
         vintaging: bool,
         vintaging_method: str | None
     ) -> dict:
@@ -199,23 +200,32 @@ def gt_from_hub(
     # establish return dict
     gt_dict = {}
 
+    if len(reference_dates) != len(data_cutoff_dates):
+        raise ValueError(
+            "`reference_dates` and `data_cutoff_dates` must have the same length."
+        )
+
     # if using vintaging, fetch iteratively
     if vintaging:
-        for date in dates:
+        for reference_date, cutoff_date in zip(reference_dates, data_cutoff_dates):
             if vintaging_method == 'checkout':
-                gt_dict[str(date)] = _checkout_gt_fetch(hub_path=hub_path, targets=targets, date=date)
+                gt_dict[str(reference_date)] = _checkout_gt_fetch(
+                    hub_path=hub_path,
+                    targets=targets,
+                    date=cutoff_date,
+                )
             elif vintaging_method == 'as_of':
-                gt, _ = _asof_gt_fetch(hub_path=hub_path, targets=targets, date_s=date)
-                gt_dict[str(date)] = gt 
+                gt, _ = _asof_gt_fetch(hub_path=hub_path, targets=targets, date_s=cutoff_date)
+                gt_dict[str(reference_date)] = gt 
 
     # if not using vintaging, fetch for latest date
     else:
-        gt, latest_date = _asof_gt_fetch(
+        gt, _ = _asof_gt_fetch(
             hub_path=hub_path,
             targets=targets,
-            date_s=dates
+            date_s=data_cutoff_dates
         ) 
-        gt_dict[latest_date] = gt 
+        gt_dict[reference_dates[-1]] = gt 
     
     # return gt data dict (keyed by date)
     logger.info("Success ✅")

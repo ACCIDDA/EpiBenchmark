@@ -1,8 +1,11 @@
 """Validate YAML configuration file input."""
 
+import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+
+import pandas as pd
 import yaml
 
 from .gt_from_hub import hub_clone_setup
@@ -78,6 +81,174 @@ class Config:
             raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
         return hub_path
 
+    def _load_hub_reference_schedule(self, hub_path: Path) -> tuple[list[str], int | None]:
+        """
+        Load official reference dates and submission cutoff offset from hub metadata.
+
+        Returns:
+            - sorted reference_date values from hub-config/tasks.json, if present
+            - the latest allowed submission day offset relative to reference_date
+              (e.g. -3 means submission closes three days before reference_date)
+        """
+        tasks_path = hub_path / "hub-config" / "tasks.json"
+        if not tasks_path.is_file():
+            return [], None
+
+        with open(tasks_path, "r", encoding="utf-8") as tasks_file:
+            tasks_config = json.load(tasks_file)
+
+        reference_dates = set()
+        submission_cutoff_days = None
+
+        for round_config in tasks_config.get("rounds", []):
+            for model_task in round_config.get("model_tasks", []):
+                task_ids = model_task.get("task_ids", {})
+                reference_date_task = task_ids.get("reference_date", {})
+                for field in ("required", "optional"):
+                    values = reference_date_task.get(field)
+                    if isinstance(values, list):
+                        reference_dates.update(str(value) for value in values)
+
+            submissions_due = round_config.get("submissions_due", {})
+            if submissions_due.get("relative_to") == "reference_date":
+                end_offset = submissions_due.get("end")
+                if isinstance(end_offset, int):
+                    submission_cutoff_days = end_offset
+
+        return sorted(reference_dates), submission_cutoff_days
+
+    def _infer_reference_dates_from_asof(
+        self,
+        hub_path: Path,
+        reference_weekday: int,
+    ) -> list[str]:
+        """
+        Infer historical reference dates by shifting available `as_of` dates to the
+        hub's reference-date weekday.
+
+        This is a fallback for hubs whose current tasks.json only describes the
+        active season while older seasons are still present in target-data.
+        """
+        target_data_dir = hub_path / "target-data"
+        parquet_path = target_data_dir / "time-series.parquet"
+        csv_path = target_data_dir / "time-series.csv"
+
+        if parquet_path.is_file():
+            gt = pd.read_parquet(parquet_path, columns=["as_of"])
+        elif csv_path.is_file():
+            gt = pd.read_csv(csv_path, usecols=["as_of"], low_memory=False)
+        else:
+            return []
+
+        if "as_of" not in gt:
+            return []
+
+        as_of_dates = pd.to_datetime(gt["as_of"], errors="coerce").dropna().dt.normalize().unique()
+        inferred_reference_dates = set()
+        for as_of_date in as_of_dates:
+            days_until_reference = (reference_weekday - as_of_date.weekday()) % 7
+            reference_date = as_of_date + pd.Timedelta(days=days_until_reference)
+            inferred_reference_dates.add(reference_date.strftime("%Y-%m-%d"))
+
+        return sorted(inferred_reference_dates)
+
+    def _select_reference_dates_in_range(
+        self,
+        candidate_reference_dates: list[str],
+        start_dt: datetime,
+        end_dt: datetime,
+        frequency_weeks: int,
+    ) -> list[str]:
+        """Select official reference dates that fall inside a requested span."""
+        in_range_dates = [
+            date_str
+            for date_str in candidate_reference_dates
+            if start_dt.date() <= datetime.strptime(date_str, "%Y-%m-%d").date() <= end_dt.date()
+        ]
+        return in_range_dates[::frequency_weeks]
+
+    def _align_setup_dates_to_hub_schedule(
+        self,
+        dates_value: dict | list,
+        generated_dates: list[str],
+        frequency_weeks: int | None = None,
+    ) -> tuple[list[str], list[str]]:
+        """
+        Align setup reference dates to official hub dates when metadata is available.
+
+        Returns:
+            - reference dates to expose to users and use in output paths
+            - truth-data cutoff dates used for vintaged fetches
+        """
+        official_reference_dates, submission_cutoff_days = self._load_hub_reference_schedule(self.hub_path)
+        inferred_reference_dates = []
+
+        if official_reference_dates:
+            reference_weekday = datetime.strptime(official_reference_dates[0], "%Y-%m-%d").weekday()
+            inferred_reference_dates = self._infer_reference_dates_from_asof(
+                hub_path=self.hub_path,
+                reference_weekday=reference_weekday,
+            )
+
+        aligned_reference_dates = list(generated_dates)
+
+        if isinstance(dates_value, dict):
+            start_dt = datetime.strptime(str(dates_value["start_date"]), "%Y-%m-%d")
+            end_dt = datetime.strptime(str(dates_value["end_date"]), "%Y-%m-%d")
+
+            if official_reference_dates:
+                in_range_official = self._select_reference_dates_in_range(
+                    candidate_reference_dates=official_reference_dates,
+                    start_dt=start_dt,
+                    end_dt=end_dt,
+                    frequency_weeks=frequency_weeks or 1,
+                )
+                if in_range_official:
+                    aligned_reference_dates = in_range_official
+                elif inferred_reference_dates:
+                    in_range_inferred = self._select_reference_dates_in_range(
+                        candidate_reference_dates=inferred_reference_dates,
+                        start_dt=start_dt,
+                        end_dt=end_dt,
+                        frequency_weeks=frequency_weeks or 1,
+                    )
+                    if in_range_inferred:
+                        aligned_reference_dates = in_range_inferred
+
+        elif isinstance(dates_value, list):
+            allowed_reference_dates = set(official_reference_dates) or set(inferred_reference_dates)
+            if allowed_reference_dates:
+                invalid_dates = [date for date in generated_dates if date not in allowed_reference_dates]
+                if invalid_dates:
+                    raise ValueError(
+                        "The following setup dates are not valid hub reference dates for this hub "
+                        f"schedule: {invalid_dates}. Please pass official hub reference_date values."
+                    )
+
+        if not aligned_reference_dates:
+            raise ValueError(
+                "No valid hub reference dates were found within the requested span. "
+                "Please adjust the requested date range to overlap the hub's forecast schedule."
+            )
+
+        if submission_cutoff_days is None:
+            cutoff_dates = list(aligned_reference_dates)
+        else:
+            cutoff_dates = [
+                (
+                    datetime.strptime(reference_date, "%Y-%m-%d") + timedelta(days=submission_cutoff_days)
+                ).strftime("%Y-%m-%d")
+                for reference_date in aligned_reference_dates
+            ]
+
+        if aligned_reference_dates != generated_dates:
+            logger.info(
+                "Aligned requested setup dates to hub reference dates: %s",
+                aligned_reference_dates,
+            )
+
+        return aligned_reference_dates, cutoff_dates
+
 
     def validate_setup_config(self):
         """
@@ -85,8 +256,10 @@ class Config:
         
         Creates attributes for each key of the config:
         - .hub_path
+        - .challenge_name
         - .targets
         - .dates
+        - .gt_cutoff_dates
         - .vintaging
         - .vintaging_method (None if not vintaging)
         - .output_path 
@@ -104,6 +277,7 @@ class Config:
         
         # `hub-path`-specific key check
         self.hub_path = self._resolve_hub_path(self.config["hub_path"])
+        self.challenge_name = self.config.get("challenge_name")
 
         # `targets`-specific key check
         # ensure list, ensure not empty
@@ -121,6 +295,7 @@ class Config:
 
         # `dates` -specific key check 
         dates = self.config['dates'] 
+        frequency_weeks = None
         if isinstance(dates, dict):
             # check for all keys
             required_date_keys = {"start_date", "end_date", "freq"}
@@ -148,6 +323,7 @@ class Config:
                     raise ValueError
             except ValueError:
                 raise ValueError(f"Frequency amount must be a positive integer. Received: '{freq_parts[0]}'")
+            frequency_weeks = freq_val
             freq_unit = freq_parts[1]
             if freq_unit not in ["week", "weeks"]:
                 raise ValueError(
@@ -203,6 +379,12 @@ class Config:
             self.vintaging_method = self.config["vintaging_method"]
         else: # if we aren't doing vintaging at all, set the vintaging_method to None
             self.vintaging_method = None
+
+        self.dates, self.gt_cutoff_dates = self._align_setup_dates_to_hub_schedule(
+            dates_value=dates,
+            generated_dates=self.dates,
+            frequency_weeks=frequency_weeks,
+        )
 
 
         # `output_path`-specific key check 
