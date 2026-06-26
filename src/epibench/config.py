@@ -83,6 +83,9 @@ class Config:
     def _load_hub_round_definitions(self, hub_path: Path) -> list[dict] | None:
         """
         Load round definitions from hub-config/tasks.json.
+
+        Supports hubs that key forecast dates by either `reference_date`
+        or `origin_date`.
         """
         tasks_path = hub_path / "hub-config" / "tasks.json"
         if not tasks_path.is_file():
@@ -101,10 +104,17 @@ class Config:
         for round_index, round_config in enumerate(tasks_config.get("rounds", []), start=1):
             reference_dates = set()
             targets = set()
+            date_task_name = None
             for model_task in round_config.get("model_tasks", []):
                 task_ids = model_task.get("task_ids", {})
 
-                reference_date_task = task_ids.get("reference_date", {})
+                if date_task_name is None:
+                    if "reference_date" in task_ids:
+                        date_task_name = "reference_date"
+                    elif "origin_date" in task_ids:
+                        date_task_name = "origin_date"
+
+                reference_date_task = task_ids.get(date_task_name, {}) if date_task_name else {}
                 for field in ("required", "optional"):
                     values = reference_date_task.get(field)
                     if isinstance(values, list):
@@ -119,18 +129,20 @@ class Config:
             submissions_due = round_config.get("submissions_due", {})
             round_label = (
                 round_config.get("round_name")
-                or round_config.get("roune_name")
+                or round_config.get("roune_name") # patch for cdc gov RSV-forecast-hub typo in tasks.json
                 or round_config.get("name")
                 or f"round_{round_index}"
             )
 
             round_definitions.append({
                 "round_label": str(round_label),
+                "date_task_name": date_task_name,
                 "reference_dates": sorted(reference_dates),
                 "targets": sorted(targets),
                 "submission_cutoff_days": (
                     submissions_due.get("end")
-                    if submissions_due.get("relative_to") == "reference_date"
+                    if date_task_name is not None
+                    and submissions_due.get("relative_to") == date_task_name
                     and isinstance(submissions_due.get("end"), int)
                     else None
                 ),
@@ -148,7 +160,7 @@ class Config:
         Validate setup reference dates against tasks.json and derive gt cutoff dates.
 
         Rules:
-        - every requested date must be an official reference_date in tasks.json
+        - every requested date must be an official forecast-date value in tasks.json
         - all requested dates must belong to exactly one hub round/season
         """
         round_definitions = self._load_hub_round_definitions(self.hub_path)
@@ -164,7 +176,7 @@ class Config:
         invalid_dates = [date for date in requested_dates if date not in date_to_rounds]
         if invalid_dates:
             raise ValueError(
-                "The following setup dates are not valid hub reference_date values from "
+                "The following setup dates are not valid hub forecast-date values from "
                 f"hub-config/tasks.json: {invalid_dates}"
             )
 
@@ -499,3 +511,5 @@ class Config:
         """
         logger.info("no config checks yet") # TODO
         logger.info("Success ✅")
+        pass
+    
