@@ -7,8 +7,10 @@ import logging
 from importlib import resources
 
 import click
+import pandas as pd
 
 from .config import Config
+from .scorecard_functions import custom_scorecard
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,12 +72,18 @@ def make_scorecard(
     else:
         logger.info("Loading challenge library...")
         library_challenges = _load_library_challenges()
-        if challenge_name not in library_challenges:
+        library_challenge_entries = library_challenges.get("challenges", {})
+        if challenge_name not in library_challenge_entries:
             raise click.ClickException(
                 "that challenge is not in the EpiBenchmark challenge library"
             )
+        challenge_definition = library_challenge_entries[challenge_name]
         logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
-        # TODO, score given model, call unique scorecard function, return score csv and score card entry for given model
-        pass
+        score_file = pd.DataFrame() # TODO, route scoring logic through here 
+        scorecard_results = custom_scorecard(
+            challenge_definition.get("scorecard_function", []),
+            score_file=score_file,
+        ) # right now, results are a dict like {"function_name": results, ...}
+        # TODO, do something with the results
 
     logger.info("make-scorecard skeleton completed successfully.")

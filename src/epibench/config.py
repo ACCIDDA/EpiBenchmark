@@ -85,7 +85,7 @@ class Config:
         Load round definitions from hub-config/tasks.json.
 
         Supports hubs that key forecast dates by either `reference_date`
-        or `origin_date`.
+        or `origin_date`. Origin_date is a patch for Hopkins IDD RSV-forecast-hub.
         """
         tasks_path = hub_path / "hub-config" / "tasks.json"
         if not tasks_path.is_file():
@@ -129,7 +129,6 @@ class Config:
             submissions_due = round_config.get("submissions_due", {})
             round_label = (
                 round_config.get("round_name")
-                or round_config.get("roune_name") # patch for cdc gov RSV-forecast-hub typo in tasks.json
                 or round_config.get("name")
                 or f"round_{round_index}"
             )
