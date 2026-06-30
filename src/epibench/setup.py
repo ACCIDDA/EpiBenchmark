@@ -41,19 +41,19 @@ def setup(config_path=None):
     # gt_data will be a dict where keys are dates and values are csvs of gt data
 
     # build output dirs
-    unique_hub_name = _build_unique_hub_name(config_object=config_object)
-    output_base = config_object.output_path / unique_hub_name
+    challenge_id = _build_challenge_id(config_object=config_object)
+    output_base = config_object.output_path / challenge_id
     
     try:
         output_base.mkdir(parents=True, exist_ok=False)
     except FileExistsError as e:
-        raise FileExistsError(f"There is already a folder with unique_hub_name {unique_hub_name} at output directory {config_object.output_path}") from e
-        # if this error gets thrown, it means there is already an output folder with that unique_hub_name (we don't want to overwrite)
+        raise FileExistsError(f"There is already a folder with challenge_id {challenge_id} at output directory {config_object.output_path}") from e
+        # if this error gets thrown, it means there is already an output folder with that challenge_id (we don't want to overwrite)
     gt_output_dir = output_base / "gt"
     gt_output_dir.mkdir(parents=False, exist_ok=False)
-    # user/output/path/unique_hub_name/gt/ directory established
+    # user/output/path/challenge_id/gt/ directory established
 
-    # save gt files to user/output/path/unique_hub_name/gt/
+    # save gt files to user/output/path/challenge_id/gt/
     date_to_abs_gt_paths = {}
     for date, gt_df in gt_data.items():
         if gt_df is False: # Give warning if there wasn't a df returned
@@ -61,23 +61,23 @@ def setup(config_path=None):
             continue 
         else:
             file_name = f"{date.replace('-', '')}_gt.csv"
-            # make user/output/path/unique_hub_name/gt/YYYY-MM-DD folder (one per date!)
+            # make user/output/path/challenge_id/gt/YYYY-MM-DD folder (one per date!)
             gt_output_date_folder = gt_output_dir / date 
             gt_output_date_folder.mkdir(parents=False, exist_ok=False)
-            # make full output path of gt (user/output/path/unique_hub_name/gt/YYYY-MM-DD/file.csv)
+            # make full output path of gt (user/output/path/challenge_id/gt/YYYY-MM-DD/file.csv)
             gt_output_path = gt_output_date_folder / file_name
             gt_df.to_csv(gt_output_path, index=False)
             date_to_abs_gt_paths[date] = str(gt_output_path)
 
-    # create challenges.csv at output_base (user/output/path/unique_hub_name/)
+    # create challenges.csv at output_base (user/output/path/challenge_id/)
     challenges = pd.DataFrame(list(date_to_abs_gt_paths.items()), columns=["date", "absolute_path_to_gt"])
     challenges_output_path = output_base / "challenges.csv"
     challenges.to_csv(challenges_output_path, index=False)
 
 
-def _build_unique_hub_name(config_object: Config) -> str:
+def _build_challenge_id(config_object: Config) -> str:
     """
-    Construct a unique hub name by using user defined challenge name
+    Construct a challenge_id by using user defined challenge name
     and the hash generated from:
       - hub official name
       - targets
