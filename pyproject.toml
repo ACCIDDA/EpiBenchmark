@@ -5,7 +5,7 @@ description = "A benchmarking tool for evaluating the performance of epidemiolog
 readme = "README.md"
 authors = [
     { name = "Joseph Lemaitre", email = "Joseph.Lemaitre@unc.edu"},
-    { name = "Emily Przykucki", email = "emily@unc.edu"},
+    { name = "Emily Przykucki", email = "Emprzy@live.unc.edu"},
     { name = "Yue Liu", email = "lyue@unc.edu"},
 ]
 license = {text = "MIT"}
