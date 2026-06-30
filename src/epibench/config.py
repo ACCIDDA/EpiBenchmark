@@ -120,7 +120,7 @@ class Config:
                     targets.append(target)
         else:
             raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config['targets'])}'")
-        self.targets = self.config["targets"]
+        self.targets = sorted(self.config["targets"])
         
 
         # `dates` -specific key check 
@@ -271,7 +271,7 @@ class Config:
         self.evaluation_end_date = end
 
         # `target` key (no checks for now)
-        self.target = self.config['target']
+        self.target = sorted(self.config['target'])
 
         # `baseline_model`-specific key check
         if not isinstance(self.config["baseline_model"], str):
