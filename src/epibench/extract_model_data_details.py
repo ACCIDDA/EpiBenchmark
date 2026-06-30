@@ -104,7 +104,7 @@ def extract_model_data_details(
                 'output_type': str
                 }
             )
-
+            
             # check for required columns
             missing = set(REQUIRED_MODEL_DATA_COLUMNS) - set(df.columns)
             if missing:
@@ -171,18 +171,18 @@ def extract_model_data_details(
         model_dict[model] = concatenated_df
 
     locations_list = list(set(global_locations_list))
-
+    
     # get extra model data
-    for extra_model in include_models:
-        df = _extra_models(
-            hub_path=hub_path,
-            model_name=extra_model,
-            eval_start_date=eval_start_date,
-            eval_end_date=eval_end_date,
-            target=target,
-            locations=locations_list
-        )
-        model_dict[extra_model] = df
+    #for extra_model in include_models:
+    #    df = _extra_models(
+    #        hub_path=hub_path,
+    #        model_name=extra_model,
+    #        eval_start_date=eval_start_date,
+    #        eval_end_date=eval_end_date,
+    #        target=target,
+    #        locations=locations_list
+    #    )
+    #    model_dict[extra_model] = df
     
     logger.info("Success ✅")
     return model_dict, locations_list
