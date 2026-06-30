@@ -39,7 +39,17 @@ def setup(config_path: str | None) -> None:
 
 @cli.command(
     short_help="Score model output against ground truth.",
-    help="Command to score (WIS) model forecasts against ground truth data.",
+    help=(
+        "Command to score model forecasts either from a challenge in the "
+        "EpiBenchmark library or from a user-provided configuration file."
+    ),
+)
+@click.argument("challenge_name", required=False)
+@click.option(
+    "--model-data-path",
+    type=str,
+    required=False,
+    help="Absolute path to the model data to process with a library challenge.",
 )
 @click.option(
     "--config-path",
@@ -47,11 +57,19 @@ def setup(config_path: str | None) -> None:
     required=False,
     help="Absolute path to your YAML configuration file.",
 )
-def score(config_path: str | None) -> None:
+def score(
+    challenge_name: str | None,
+    model_data_path: str | None,
+    config_path: str | None,
+) -> None:
     """Run the EpiBench score pipeline."""
     from .score import score as run_score
 
-    run_score(config_path=config_path)
+    run_score(
+        challenge_name=challenge_name,
+        model_data_path=model_data_path,
+        config_path=config_path,
+    )
 
 
 @cli.command(
@@ -70,42 +88,6 @@ def plot(config_path: str | None) -> None:
     from .plot import plot as run_plot
 
     run_plot(config_path=config_path)
-
-
-@cli.command(
-    name="make-scorecard",
-    short_help="Generate a scorecard from a library challenge or config file.",
-    help=(
-        "Command to build a scorecard either from a challenge in the EpiBenchmark library "
-        "or from a user-provided configuration file."
-    ),
-)
-@click.argument("challenge_name", required=False)
-@click.option(
-    "--model-data-path",
-    type=str,
-    required=False,
-    help="Absolute path to the model data to process with a library challenge.",
-)
-@click.option(
-    "--config-path",
-    type=str,
-    required=False,
-    help="Absolute path to a configuration file for custom scorecard generation.",
-)
-def make_scorecard(
-    challenge_name: str | None,
-    model_data_path: str | None,
-    config_path: str | None,
-) -> None:
-    """Run the EpiBench make-scorecard pipeline."""
-    from .make_scorecard import make_scorecard as run_make_scorecard
-
-    run_make_scorecard(
-        challenge_name=challenge_name,
-        model_data_path=model_data_path,
-        config_path=config_path,
-    )
 
 
 def main(argv: list[str] | None = None) -> int | None:

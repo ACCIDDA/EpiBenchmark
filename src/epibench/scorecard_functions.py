@@ -17,12 +17,12 @@ def total_wis(score_file: pd.DataFrame) -> Any:
 
 
 def coverage_50(score_file: pd.DataFrame) -> Any:
-    """Compute the 50 percent coverage score for a challenge."""
+    """Compute the 50 percent quantile coverage score for a challenge."""
     pass
 
 
 def coverage_90(score_file: pd.DataFrame) -> Any:
-    """Compute the 90 percent coverage score for a challenge."""
+    """Compute the 90 percent quantile coverage score for a challenge."""
     pass
 
 

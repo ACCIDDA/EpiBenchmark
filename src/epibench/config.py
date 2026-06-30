@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from .gt_from_hub import hub_clone_setup
+from .path_utils import resolve_hub_path, resolve_path
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class Config:
     def __init__(self, config_path: str, pipeline: str):
 
-        valid_pipelines = ["setup", "score", "plot", "make-scorecard"]
+        valid_pipelines = ["setup", "score", "plot"]
 
         if pipeline.lower() not in valid_pipelines:
             raise ValueError(f"'pipeline' param must be one of {valid_pipelines}. Received '{pipeline}'.")
@@ -45,8 +45,6 @@ class Config:
             self.validate_score_config()
         elif self.pipeline == "plot":
             self.validate_plot_config()
-        elif self.pipeline == "make-scorecard":
-            self.validate_make_scorecard_config()
 
         logger.info("Success ✅")
 
@@ -57,28 +55,13 @@ class Config:
         Relative paths are interpreted relative to the config file location.
         Absolute paths are preserved.
         """
-        path = Path(path_value).expanduser()
-        if not path.is_absolute():
-            path = self.base_dir / path
-        return path.resolve()
+        return resolve_path(path_value, base_dir=self.base_dir)
 
     def _resolve_hub_path(self, hub_path_value: str) -> Path:
         """
         Resolve and validate a local hub path, or clone a GitHub URL.
         """
-        if hub_path_value.startswith(("http://", "https://")) and "github.com" in hub_path_value:
-            return hub_clone_setup(hub_url=hub_path_value)
-
-        hub_path = self._resolve_config_path(hub_path_value)
-        if not hub_path.is_dir():
-            raise ValueError(
-                f"`hub_path` ({hub_path_value}) either does not exist on this machine "
-                "or does not point to a directory."
-            )
-        target_data_dir = hub_path / "target-data"
-        if not target_data_dir.is_dir():
-            raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
-        return hub_path
+        return resolve_hub_path(hub_path_value, base_dir=self.base_dir)
 
     def _load_hub_round_definitions(self, hub_path: Path) -> list[dict] | None:
         """
@@ -501,14 +484,3 @@ class Config:
         self.plot_output_dir.mkdir(parents=True, exist_ok=True)
         if not self.plot_output_dir.is_dir():
             raise ValueError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}")
-
-    def validate_make_scorecard_config(self):
-        """
-        Validate config for the `make-scorecard` pipeline.
-
-        Config for make-scorecard is currently undefined and will fill in later
-        """
-        logger.info("no config checks yet") # TODO
-        logger.info("Success ✅")
-        pass
-    
