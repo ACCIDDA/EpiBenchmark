@@ -13,14 +13,14 @@ import pandas as pd
 from .config import Config
 from .extract_model_data_details import extract_model_data_details
 from .ground_truth import GroundTruth
-from .path_utils import resolve_hub_path, resolve_path
+from .gt_from_hub import hub_clone_setup
+from .path_utils import resolve_path
 from .scorecard_functions import custom_scorecard
 from .scoring_bridge import ScoringBridge
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-LIBRARY_BASELINE_FALLBACK = "__epibench_library_baseline__"
 SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash
 SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash
 
@@ -107,11 +107,12 @@ def _write_scorecard(scorecard_results: dict[str, object], output_dir: Path) -> 
 def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Path]:
     """Normalize a library-route model path into the model_info shape used by scoring."""
     resolved_model_data_path = resolve_path(model_data_path)
+    # fail if it does not exist
     if not resolved_model_data_path.exists():
         raise FileNotFoundError(
             f"--model-data-path {resolved_model_data_path} does not exist."
         )
-
+    # fail if it is a file but not a .csv
     if resolved_model_data_path.is_file():
         if resolved_model_data_path.suffix.lower() != ".csv":
             raise ValueError(
@@ -119,6 +120,7 @@ def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Pa
             )
         model_name = resolved_model_data_path.stem
         model_info = {model_name: [resolved_model_data_path]}
+    # fail if it is a dir with no .csvs
     elif resolved_model_data_path.is_dir():
         csv_paths = sorted(resolved_model_data_path.glob("*.csv"))
         if not csv_paths:
@@ -127,60 +129,13 @@ def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Pa
             )
         model_name = resolved_model_data_path.name
         model_info = {model_name: csv_paths}
+    # fail if neither dir nor .csv
     else:
         raise ValueError(
             "--model-data-path must point to a .csv file or a directory of .csv files."
         )
 
     return model_info, resolved_model_data_path
-
-
-def _infer_target_and_eval_window(model_info: dict[str, list[Path]]) -> tuple[str, pd.Timestamp, pd.Timestamp]:
-    """Infer target and evaluation date range from the provided model data."""
-    discovered_targets: set[str] = set()
-    target_end_dates: list[pd.Timestamp] = []
-
-    for csv_paths in model_info.values():
-        for csv_path in csv_paths:
-            df = pd.read_csv(csv_path, usecols=["target", "target_end_date"])
-            if df.empty:
-                continue
-            discovered_targets.update(df["target"].dropna().astype(str).unique())
-            dates = pd.to_datetime(df["target_end_date"], errors="coerce").dropna()
-            target_end_dates.extend(dates.tolist())
-
-    if not discovered_targets:
-        raise ValueError("Could not determine a target from the provided model data.")
-    if len(discovered_targets) > 1:
-        raise ValueError(
-            "Provided model data contains more than one unique target. "
-            "Library challenge scoring currently supports only one target per run."
-        )
-    if not target_end_dates:
-        raise ValueError(
-            "Could not determine evaluation dates from the provided model data."
-        )
-
-    inferred_target = next(iter(discovered_targets))
-    return inferred_target, min(target_end_dates), max(target_end_dates)
-
-
-def _resolve_library_hub_path(
-    challenge_name: str, challenge_definition: dict[str, object]
-) -> Path:
-    """Resolve the hub path for a library challenge."""
-    if "hub_path" not in challenge_definition or not challenge_definition["hub_path"]:
-        raise ValueError(
-            f"Challenge {challenge_name} is missing required field `hub_path` "
-            "in the EpiBenchmark challenge library."
-        )
-
-    try:
-        return resolve_hub_path(str(challenge_definition["hub_path"]))
-    except ValueError as exc:
-        raise ValueError(
-            f"Challenge {challenge_name} has an invalid `hub_path`. {exc}"
-        ) from exc
 
 
 def _score_from_config(config_path: str) -> None:
@@ -199,12 +154,14 @@ def _score_from_config(config_path: str) -> None:
     )
 
     full_output_path = _write_scores(scores, config_object.output_path)
-    logger.info("File executed successfully to end 🎉.")
+    logger.info("Process executed successfully to end 🎉.")
     logger.info(f"Output file at {full_output_path}")
 
 
-def _score_from_library_challenge(challenge_name: str, model_data_path: str) -> None:
-    """Run library-challenge scoring (scores CSV + scorecard)"""
+def score_from_challenge_library(challenge_name: str, model_data_path: str) -> None:
+    """Run challenge library scoring (scores CSV + scorecard)"""
+
+    # fail if provided challenge is not in our library
     logger.info("Loading challenge library...")
     library_challenges = _load_library_challenges()
     library_challenge_entries = library_challenges.get("challenges", {})
@@ -212,32 +169,28 @@ def _score_from_library_challenge(challenge_name: str, model_data_path: str) -> 
         raise click.ClickException(
             "that challenge is not in the EpiBenchmark challenge library"
         )
-
     challenge_definition = library_challenge_entries[challenge_name]
     logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
 
+    # TODO, verify what _resolve_model_info() 
     model_info, resolved_model_data_path = _resolve_model_info(model_data_path)
-    inferred_target, inferred_start_date, inferred_end_date = _infer_target_and_eval_window(
-        model_info
-    )
 
-    target = str(challenge_definition.get("target", inferred_target))
-    challenge_target_dates = challenge_definition.get("target_dates", [])
-    if challenge_target_dates:
-        evaluation_start_date = pd.to_datetime(min(challenge_target_dates))
-        evaluation_end_date = pd.to_datetime(max(challenge_target_dates))
-    else:
-        evaluation_start_date = inferred_start_date
-        evaluation_end_date = inferred_end_date
+    # set target 
+    target = str(challenge_definition["target"])
 
-    hub_path = _resolve_library_hub_path(challenge_name, challenge_definition)
-    baseline_model = str(
-        challenge_definition.get("baseline_model", LIBRARY_BASELINE_FALLBACK)
-    )
-    include_models = list(challenge_definition.get("include_models", []))
-    if baseline_model != LIBRARY_BASELINE_FALLBACK and baseline_model not in include_models:
-        include_models.append(baseline_model)
+    # set eval start and end
+    challenge_target_end_dates = challenge_definition.get("target_end_dates", [])
+    evaluation_start_date = pd.to_datetime(min(challenge_target_end_dates))
+    evaluation_end_date = pd.to_datetime(max(challenge_target_end_dates))
 
+    # ensure hub clone
+    hub_path = hub_clone_setup(hub_url=challenge_definition["hub_path"])
+
+    # set baseline model, add to include models list
+    baseline_model = challenge_definition["basline_model"]
+    include_models = [baseline_model]
+
+    # send to general scoring function (to be sent to R scoringutils)
     scores = _score_models(
         hub_path=hub_path,
         model_info=model_info,
@@ -248,14 +201,17 @@ def _score_from_library_challenge(challenge_name: str, model_data_path: str) -> 
         baseline_model=baseline_model,
     )
 
+    # TODO: add --output-path to both pathways for epibench score
     output_dir = resolved_model_data_path.parent if resolved_model_data_path.is_file() else resolved_model_data_path
     score_output_path = _write_scores(scores, output_dir)
     logger.info(f"Output file at {score_output_path}")
 
+    # build scorecard using custom function registry
     scorecard_results = custom_scorecard(
-        challenge_definition.get("scorecard_function", []),
+        challenge_definition["scorecard_function"],
         score_file=scores,
     )
+    # TODO add --output-path to both pathways for epibench score
     scorecard_output_path = _write_scorecard(scorecard_results, output_dir)
     logger.info(f"Scorecard output file at {scorecard_output_path}")
 
@@ -272,33 +228,35 @@ def score(
     using_config = config_path is not None
 
     logger.info("Validating score inputs...")
+    # fail if both --model-data-path and --config-path are provided
     if using_library_challenge and using_config:
-        raise click.UsageError(
-            "Use either a library challenge with --model-data-path or --config-path, not both."
-        )
+        raise click.UsageError("Use either a library challenge with --model-data-path or --config-path, not both.")
 
     if using_config:
+        # fail if challenge name or --model-data-path is given with --config-path
         if challenge_name is not None or model_data_path is not None:
-            raise click.UsageError(
-                "When using --config-path, do not provide challenge-name or --model-data-path."
-            )
+            raise click.UsageError("When using --config-path, do not provide challenge-name or --model-data-path.")
+        # othwerise, score normally
         _score_from_config(config_path=config_path)
         return
 
+    # fail if no --model-data-path, challenge name, OR --config-path
     if challenge_name is None and model_data_path is None:
         raise click.UsageError(
             "Provide either <challenge-name> with --model-data-path or --config-path."
         )
+    # fail if no challenge name with --model-data-path
     if challenge_name is None:
         raise click.UsageError(
             "A library challenge name is required when using --model-data-path."
         )
+    # fail if no --model-path with challenge name
     if model_data_path is None:
         raise click.UsageError(
             "--model-data-path is required when using a library challenge."
         )
-
-    _score_from_library_challenge(
+    # otherwise, score score normally + build scorecard 
+    score_from_challenge_library(
         challenge_name=challenge_name,
         model_data_path=model_data_path,
     )
