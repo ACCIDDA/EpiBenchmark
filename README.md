@@ -1,57 +1,99 @@
-# EpiBench
+# EpiBenchmark
 
-EpiBench is a work-in-progress benchmarking tool for disease forecasts. The package is still in development.
+EpiBench is a work-in-progress benchmarking tool for evaluating performance of infectious disease forecasting models. The package is still in development.
+
+## Requirements
+- Python 3.10 or later
+- Git
+- R and the `scoringutils` package for the `epibench score` command
 
 ## Installation
 
-We recommend using a project-local virtual environment so that `pip`, `python`,
-and `epibench` all come from the same interpreter.
+Clone the repository:
 
-To begin installing EpiBench, clone the repository locally and run the following commands from the repository
-root.
+git clone https://github.com/ACCIDDA/EpiBenchmark.git
+cd EpiBenchmark
+
+EpiBenchmark supports installation using either **uv** (recommended) or **pip**.
+
+## Option 1: Install with uv
+
+This is the fastet installation method.
+
+If the repository includes a `uv.lock` file, install using:
 
 ```bash
-python3.13 -m venv .venv
+uv sync
+```
+
+### Activate the virtual environment
+
+### Windows
+
+```bash
+.venv\Scripts\activate
+```
+
+### macOS/Linux
+
+```bash
 source .venv/bin/activate
 ```
 
-If `.venv` already exists and was created with a different Python version,
-remove it and recreate it before installing:
+Alternatively, you can run commands without activating the environment:
 
 ```bash
-rm -rf .venv
-python3.13 -m venv .venv
+uv run epibench --help
+```
+
+## Option 2: Install with pip
+
+Create a virtual environment.
+
+### Windows
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+### macOS/Linux
+
+```bash
+python -m venv .venv
 source .venv/bin/activate
+```
+
+Upgrade pip:
+
+```bash
 python -m pip install --upgrade pip
-python -m pip install -e .
 ```
 
-Install EpiBench from the repository root with:
+Install EpiBenchmark in editable mode:
 
 ```bash
 python -m pip install -e .
 ```
-This makes the `epibench` CLI available inside the active virtual environment.
 
-Full install flow:
+## Verify the Installation
+
+After installation, verify that the command-line interface is available:
 
 ```bash
-python3.13 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e .
+epibench --help
 ```
-
-After setup, you can leave and re-enter the environment with:
+You can also verify the available subcommands:
 
 ```bash
-deactivate
-source .venv/bin/activate
+epibench setup --help
+epibench score --help
+epibench plot --help
 ```
 
 ## Scoring Requirements
 
-The Python virtual environment only manages EpiBench's Python dependencies.
+The Python virtual environment only manages EpiBenchmark's Python dependencies.
 The `epibench score` command also calls `Rscript`, so scoring has two external
 requirements:
 
@@ -59,11 +101,7 @@ requirements:
 - the CRAN package `scoringutils` must be installed in the R library used by
   that `Rscript`
 
-This is compatible with the `venv` workflow above: you run `epibench` from the
-activated Python environment, and that Python process invokes the `Rscript`
-available on your machine.
-
-You can check that `Rscript` is available with:
+Check that `R` is available with:
 
 ```bash
 Rscript --version
@@ -87,8 +125,7 @@ command.
 
 ## Makefile Shortcuts
 
-You can also use the included `Makefile` to avoid typing the full setup and
-testing commands each time.
+The repository includes a `Makefile` with several convenience commands.
 
 Available commands:
 
@@ -96,7 +133,7 @@ Available commands:
   Creates the project virtual environment.
 - `make install`
   Creates the virtual environment if needed, upgrades `pip`, and installs
-  EpiBench in editable mode.
+  EpiBenchmark in editable mode.
 - `make test-cli`
   Runs a small CLI smoke test for:
   - `epibench`
@@ -105,18 +142,14 @@ Available commands:
   - `epibench score --help`
   - `epibench plot --help`
 
-If your Python 3.13 executable has a different name, you can override it:
+If your Python executable has a different name, you can override it:
 
 ```bash
-make install PYTHON=python3.13
+make install PYTHON=python3
 ```
 
-After installation, test the CLI with:
+or for a specific version:
 
 ```bash
-epibench
-epibench --help
-epibench setup --help
-epibench score --help
-epibench plot --help
+make install PYTHON=python3.11
 ```
