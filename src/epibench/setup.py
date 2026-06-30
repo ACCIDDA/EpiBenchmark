@@ -75,7 +75,7 @@ def setup(config_path=None):
     challenges.to_csv(challenges_output_path, index=False)
 
 
-def _build_unique_hub_name(config_object) -> str:
+def _build_unique_hub_name(config_object: Config) -> str:
     """
     Construct a unique hub name by using user defined challenge name
     and the hash generated from:
