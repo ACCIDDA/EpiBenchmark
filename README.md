@@ -12,6 +12,7 @@ EpiBench is a work-in-progress benchmarking tool for evaluating performance of i
 Clone the repository:
 
 git clone https://github.com/ACCIDDA/EpiBenchmark.git
+
 cd EpiBenchmark
 
 EpiBenchmark supports installation using either **uv** (recommended) or **pip**.
