@@ -87,7 +87,7 @@ class ScoringBridge:
                 stderr = result.stderr.strip()
                 stdout = result.stdout.strip()
                 details = "\n".join(part for part in [stdout, stderr] if part)
-                if "there is no package called ‘scoringutils’" in details or "there is no package called 'scoringutils'" in details:
+                if "there is no package called 'scoringutils'" in details or "there is no package called 'scoringutils'" in details:
                     raise RuntimeError(
                         "R scoring process failed because the R package `scoringutils` is not installed.\n"
                         "Install it in R with:\n"
