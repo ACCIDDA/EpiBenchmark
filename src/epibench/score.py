@@ -6,6 +6,7 @@ import json
 import logging
 from importlib import resources
 from pathlib import Path
+from typing import Literal
 
 import click
 import pandas as pd
@@ -73,35 +74,32 @@ def _score_models(
     return scorer.score_forecasts(df)
 
 
-def _write_scores(scores: pd.DataFrame, output_dir: Path) -> Path:
-    """Write scores to disk and return the output path."""
+def _write_output_csv(
+    output_kind: Literal["scores", "scorecard"],
+    output_data: pd.DataFrame | dict[str, object],
+    output_dir: Path,
+) -> Path:
+    """Write scores or scorecard output to disk and return the output path."""
     output_dir.mkdir(parents=True, exist_ok=True)
-    full_output_path = output_dir / SCORES_FILENAME
-    if full_output_path.exists(): # does not overwrite
-        raise FileExistsError(
-            f"Score output file already exists and will not be overwritten: {full_output_path}"
-        )
-    scores.to_csv(full_output_path, index=False, encoding="utf-8-sig")
-    return full_output_path
+    if output_kind == "scores":
+        output_path = output_dir / SCORES_FILENAME
+        output_df = output_data
+        error_label = "Score"
+    else:
+        output_path = output_dir / SCORECARD_FILENAME
+        output_df = pd.DataFrame([output_data])
+        error_label = "Scorecard"
 
-
-def _write_scorecard(scorecard_results: dict[str, object], output_dir: Path) -> Path:
-    """Write scorecard results to disk and return the output path."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    scorecard_output_path = output_dir / SCORECARD_FILENAME
-    if scorecard_output_path.exists(): # does not overwrite
+    if output_path.exists():
         raise FileExistsError(
-            "Scorecard output file already exists and will not be overwritten: "
-            f"{scorecard_output_path}"
+            f"{error_label} output file already exists and will not be overwritten: {output_path}"
         )
-    scorecard_df = pd.DataFrame(
-        [
-            {"metric": metric_name, "value": metric_value}
-            for metric_name, metric_value in scorecard_results.items()
-        ]
-    )
-    scorecard_df.to_csv(scorecard_output_path, index=False, encoding="utf-8-sig")
-    return scorecard_output_path
+
+    if not isinstance(output_df, pd.DataFrame):
+        raise TypeError("Score output data must be a pandas DataFrame.")
+
+    output_df.to_csv(output_path, index=False, encoding="utf-8-sig")
+    return output_path
 
 
 def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Path]:
@@ -164,7 +162,7 @@ def _score_from_config(config_path: str) -> None:
         baseline_model=config_object.baseline_model,
     )
 
-    full_output_path = _write_scores(scores, config_object.output_path)
+    full_output_path = _write_output_csv("scores", scores, config_object.output_path)
     logger.info("Process executed successfully to end 🎉.")
     logger.info(f"Output file at {full_output_path}")
 
@@ -217,7 +215,7 @@ def score_from_challenge_library(
         baseline_model=baseline_model,
     )
 
-    score_output_path = _write_scores(scores, output_dir)
+    score_output_path = _write_output_csv("scores", scores, output_dir)
     logger.info(f"Output file at {score_output_path}")
 
     # build scorecard using custom function registry
@@ -225,7 +223,7 @@ def score_from_challenge_library(
         challenge_definition["scorecard_function"],
         score_file=scores,
     )
-    scorecard_output_path = _write_scorecard(scorecard_results, output_dir)
+    scorecard_output_path = _write_output_csv("scorecard", scorecard_results, output_dir)
     logger.info(f"Scorecard output file at {scorecard_output_path}")
 
 
