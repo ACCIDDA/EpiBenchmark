@@ -39,3 +39,18 @@ def resolve_hub_path(hub_path_value: str, base_dir: str | Path | None = None) ->
         raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
 
     return hub_path
+
+
+def resolve_output_dir(output_path: str | Path, base_dir: str | Path | None = None) -> Path:
+    """
+    Resolve and validate an output directory path.
+
+    Creates the directory if it does not already exist.
+    """
+    resolved_output_path = resolve_path(output_path, base_dir=base_dir)
+    if resolved_output_path.exists() and not resolved_output_path.is_dir():
+        raise NotADirectoryError(
+            f"--output-path must be a directory. Received {resolved_output_path}"
+        )
+    resolved_output_path.mkdir(parents=True, exist_ok=True)
+    return resolved_output_path

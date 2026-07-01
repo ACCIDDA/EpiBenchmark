@@ -15,7 +15,7 @@ from .config import Config
 from .extract_model_data_details import extract_model_data_details
 from .ground_truth import GroundTruth
 from .gt_from_hub import hub_clone_setup
-from .path_utils import resolve_path
+from .path_utils import resolve_output_dir, resolve_path
 from .scorecard_functions import custom_scorecard
 from .scoring_bridge import ScoringBridge
 
@@ -136,17 +136,6 @@ def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Pa
     return model_info, resolved_model_data_path
 
 
-def _resolve_output_dir(output_path: str) -> Path:
-    """Resolve and validate a library-route output directory."""
-    resolved_output_path = resolve_path(output_path)
-    if resolved_output_path.exists() and not resolved_output_path.is_dir():
-        raise NotADirectoryError(
-            f"--output-path must be a directory. Received {resolved_output_path}"
-        )
-    resolved_output_path.mkdir(parents=True, exist_ok=True)
-    return resolved_output_path
-
-
 def _score_from_config(config_path: str) -> None:
     """Run the config-driven scoring workflow (just CSV; no scorecard made)"""
     logger.info("Validating config...")
@@ -187,7 +176,7 @@ def score_from_challenge_library(
 
     # TODO, verify what _resolve_model_info() does 
     model_info, _ = _resolve_model_info(model_data_path)
-    output_dir = _resolve_output_dir(output_path)
+    output_dir = resolve_output_dir(output_path)
 
     # set target 
     target = str(challenge_definition["target"])
