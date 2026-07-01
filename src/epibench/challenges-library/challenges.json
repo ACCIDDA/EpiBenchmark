@@ -1,6 +1,7 @@
 {
     "challenges": {
         "epb_rsv_inchosp_2025-2026_v1": {
+            "hub": "rsv-forecast-hub",
             "hub_path": "TBD",
             "zenodo_doi": "TBD",
             "target_end_dates": ["TBD"],

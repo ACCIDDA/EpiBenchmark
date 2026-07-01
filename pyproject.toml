@@ -32,7 +32,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-epibench = ["challenges-library/*.json"]
+epibench = ["challenges-library/*.json", "hub-dates-library/*.json"]
 
 [project.scripts]
 epibench = "epibench.cli:main"
