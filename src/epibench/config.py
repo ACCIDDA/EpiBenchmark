@@ -271,7 +271,7 @@ class Config:
         self.evaluation_end_date = end
 
         # `target` key (no checks for now)
-        self.target = sorted(self.config['target'])
+        self.target = self.config['target']
 
         # `baseline_model`-specific key check
         if not isinstance(self.config["baseline_model"], str):
