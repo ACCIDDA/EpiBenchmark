@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def _extra_models(
-        hub_path_e: Path,
+        hub_path: Path,
         model_name: str,
         eval_start_date: str,
         eval_end_date: str,
@@ -22,12 +22,13 @@ def _extra_models(
     """
     # use hubdata connect_hub() to quickly pull extra model data
     try:
-        hub_connection = connect_hub(hub_path=hub_path_e)
+        hub_connection = connect_hub(hub_path=hub_path)
         data_return = hub_connection.get_dataset().to_table().to_pandas()
     except Exception as e:
         raise ConnectionError(
-            f"Could not establish connection to hub {hub_path_e} to retrieve extra "
+            f"Could not establish connection to hub {hub_path} to retrieve extra "
             f"model ({model_name}) data. Error: {e}"
+            
         )
     # filter for the things we need
     data_return['target_end_date'] = pd.to_datetime(data_return['target_end_date'])
@@ -173,16 +174,16 @@ def extract_model_data_details(
     locations_list = list(set(global_locations_list))
     
     # get extra model data
-    #for extra_model in include_models:
-    #    df = _extra_models(
-    #        hub_path_e=hub_path,
-    #        model_name=extra_model,
-    #        eval_start_date=eval_start_date,
-    #        eval_end_date=eval_end_date,
-    #        target=target,
-    #        locations=locations_list
-    #    )
-    #    model_dict[extra_model] = df
+    for extra_model in include_models:
+        df = _extra_models(
+            hub_path=hub_path,
+            model_name=extra_model,
+            eval_start_date=eval_start_date,
+            eval_end_date=eval_end_date,
+            target=target,
+            locations=locations_list
+        )
+        model_dict[extra_model] = df
     
     logger.info("Success ✅")
     return model_dict, locations_list
