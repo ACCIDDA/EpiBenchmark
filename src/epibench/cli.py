@@ -52,6 +52,12 @@ def setup(config_path: str | None) -> None:
     help="Absolute path to the model data to process with a library challenge.",
 )
 @click.option(
+    "--output-path",
+    type=str,
+    required=False,
+    help="Path to the directory where score outputs should be written for a library challenge.",
+)
+@click.option(
     "--config-path",
     type=str,
     required=False,
@@ -60,6 +66,7 @@ def setup(config_path: str | None) -> None:
 def score(
     challenge_name: str | None,
     model_data_path: str | None,
+    output_path: str | None,
     config_path: str | None,
 ) -> None:
     """Run the EpiBench score pipeline."""
@@ -68,6 +75,7 @@ def score(
     run_score(
         challenge_name=challenge_name,
         model_data_path=model_data_path,
+        output_path=output_path,
         config_path=config_path,
     )
 

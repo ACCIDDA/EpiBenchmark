@@ -21,8 +21,8 @@ from .scoring_bridge import ScoringBridge
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash
-SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash
+SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash, shoudl be challenge-name
+SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash, should be challenge-name
 
 
 def _load_library_challenges() -> dict[str, object]:
@@ -138,6 +138,17 @@ def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Pa
     return model_info, resolved_model_data_path
 
 
+def _resolve_output_dir(output_path: str) -> Path:
+    """Resolve and validate a library-route output directory."""
+    resolved_output_path = resolve_path(output_path)
+    if resolved_output_path.exists() and not resolved_output_path.is_dir():
+        raise NotADirectoryError(
+            f"--output-path must be a directory. Received {resolved_output_path}"
+        )
+    resolved_output_path.mkdir(parents=True, exist_ok=True)
+    return resolved_output_path
+
+
 def _score_from_config(config_path: str) -> None:
     """Run the config-driven scoring workflow (just CSV; no scorecard made)"""
     logger.info("Validating config...")
@@ -158,7 +169,11 @@ def _score_from_config(config_path: str) -> None:
     logger.info(f"Output file at {full_output_path}")
 
 
-def score_from_challenge_library(challenge_name: str, model_data_path: str) -> None:
+def score_from_challenge_library(
+    challenge_name: str,
+    model_data_path: str,
+    output_path: str,
+) -> None:
     """Run challenge library scoring (scores CSV + scorecard)"""
 
     # fail if provided challenge is not in our library
@@ -172,8 +187,9 @@ def score_from_challenge_library(challenge_name: str, model_data_path: str) -> N
     challenge_definition = library_challenge_entries[challenge_name]
     logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
 
-    # TODO, verify what _resolve_model_info() 
-    model_info, resolved_model_data_path = _resolve_model_info(model_data_path)
+    # TODO, verify what _resolve_model_info() does 
+    model_info, _ = _resolve_model_info(model_data_path)
+    output_dir = _resolve_output_dir(output_path)
 
     # set target 
     target = str(challenge_definition["target"])
@@ -201,8 +217,6 @@ def score_from_challenge_library(challenge_name: str, model_data_path: str) -> N
         baseline_model=baseline_model,
     )
 
-    # TODO: add --output-path to both pathways for epibench score
-    output_dir = resolved_model_data_path.parent if resolved_model_data_path.is_file() else resolved_model_data_path
     score_output_path = _write_scores(scores, output_dir)
     logger.info(f"Output file at {score_output_path}")
 
@@ -211,7 +225,6 @@ def score_from_challenge_library(challenge_name: str, model_data_path: str) -> N
         challenge_definition["scorecard_function"],
         score_file=scores,
     )
-    # TODO add --output-path to both pathways for epibench score
     scorecard_output_path = _write_scorecard(scorecard_results, output_dir)
     logger.info(f"Scorecard output file at {scorecard_output_path}")
 
@@ -219,6 +232,7 @@ def score_from_challenge_library(challenge_name: str, model_data_path: str) -> N
 def score(
     challenge_name: str | None = None,
     model_data_path: str | None = None,
+    output_path: str | None = None,
     config_path: str | None = None,
 ) -> None:
     """
@@ -234,8 +248,15 @@ def score(
 
     if using_config:
         # fail if challenge name or --model-data-path is given with --config-path
-        if challenge_name is not None or model_data_path is not None:
-            raise click.UsageError("When using --config-path, do not provide challenge-name or --model-data-path.")
+        if (
+            challenge_name is not None
+            or model_data_path is not None
+            or output_path is not None
+        ):
+            raise click.UsageError(
+                "When using --config-path, do not provide challenge-name, "
+                "--model-data-path, or --output-path."
+            )
         # othwerise, score normally
         _score_from_config(config_path=config_path)
         return
@@ -255,9 +276,15 @@ def score(
         raise click.UsageError(
             "--model-data-path is required when using a library challenge."
         )
+    # fail if no --output-path wih challenge name
+    if output_path is None:
+        raise click.UsageError(
+            "--output-path is required when using a library challenge."
+        )
     # otherwise, score score normally + build scorecard 
     score_from_challenge_library(
         challenge_name=challenge_name,
         model_data_path=model_data_path,
+        output_path=output_path,
     )
     logger.info("Process executed successfully to end 🎉.")
