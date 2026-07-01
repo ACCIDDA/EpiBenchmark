@@ -52,7 +52,7 @@ def _parse_season_bounds(
         )
     return season_start, season_end
 
-
+# TODO, reveal this to user (don't make it both silent and automatic; give notice/option)
 def _derive_gt_cutoff_dates(requested_dates: list[str]) -> list[str]:
     """
     Derive truth cutoff dates from forecast dates.
