@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from .hub_date_utils import validate_setup_dates_against_hub_rounds
-from .path_utils import resolve_hub_path, resolve_path
+from .path_utils import resolve_hub_path, resolve_output_dir, resolve_path
 
 logger = logging.getLogger(__name__)
 
@@ -187,10 +187,9 @@ class Config:
 
 
         # `output_path`-specific key check 
-        output_path = resolve_path(self.config['output_path'], base_dir=self.base_dir)
-        if output_path.exists() and not output_path.is_dir():
-            raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
-        self.output_path = output_path 
+        self.output_path = resolve_output_dir(
+            self.config["output_path"], base_dir=self.base_dir
+        )
 
 
     def validate_score_config(self): 
@@ -296,10 +295,9 @@ class Config:
 
         
         # `output_path`-specific key check
-        output_path = resolve_path(self.config['output_path'], base_dir=self.base_dir)
-        if output_path.exists() and not output_path.is_dir():
-            raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
-        self.output_path = output_path 
+        self.output_path = resolve_output_dir(
+            self.config["output_path"], base_dir=self.base_dir
+        )
 
     def validate_plot_config(self):
         """
@@ -325,7 +323,6 @@ class Config:
 
         # `output_path`-specific key checks
         output_path = self.config["output_path"]
-        self.plot_output_dir = resolve_path(output_path, base_dir=self.base_dir)
-        self.plot_output_dir.mkdir(parents=True, exist_ok=True)
-        if not self.plot_output_dir.is_dir():
-            raise ValueError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}")
+        self.plot_output_dir = resolve_output_dir(
+            output_path, base_dir=self.base_dir
+        )
