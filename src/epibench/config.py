@@ -48,21 +48,6 @@ class Config:
 
         logger.info("Success ✅")
 
-    def _resolve_config_path(self, path_value: str | Path) -> Path:
-        """
-        Resolve config-provided paths.
-
-        Relative paths are interpreted relative to the config file location.
-        Absolute paths are preserved.
-        """
-        return resolve_path(path_value, base_dir=self.base_dir)
-
-    def _resolve_hub_path(self, hub_path_value: str) -> Path:
-        """
-        Resolve and validate a local hub path, or clone a GitHub URL.
-        """
-        return resolve_hub_path(hub_path_value, base_dir=self.base_dir)
-
     def _load_hub_round_definitions(self, hub_path: Path) -> list[dict] | None:
         """
         Load round definitions from hub-config/tasks.json.
@@ -234,7 +219,7 @@ class Config:
             raise KeyError(f"Config file is missing required keys: {missing}")
         
         # `hub-path`-specific key check
-        self.hub_path = self._resolve_hub_path(self.config["hub_path"])
+        self.hub_path = resolve_hub_path(self.config["hub_path"], base_dir=self.base_dir)
         self.challenge_name = self.config.get("challenge_name")
 
         # `targets`-specific key check
@@ -342,7 +327,7 @@ class Config:
 
 
         # `output_path`-specific key check 
-        output_path = self._resolve_config_path(self.config['output_path'])
+        output_path = resolve_path(self.config['output_path'], base_dir=self.base_dir)
         if output_path.exists() and not output_path.is_dir():
             raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
         self.output_path = output_path 
@@ -375,7 +360,7 @@ class Config:
             raise KeyError(f"Config file is missing required keys: {missing}")
         
         # `hub-path`-specific key check
-        self.hub_path = self._resolve_hub_path(self.config["hub_path"])
+        self.hub_path = resolve_hub_path(self.config["hub_path"], base_dir=self.base_dir)
         
         # `evaluation_start_date` and `evaluation_end_date`-specific key check
         # ensure they can be coerced as dates
@@ -431,7 +416,7 @@ class Config:
         model_info = {}
         for model_name, path in self.config['models'].items():
             data_files_list = []
-            p = self._resolve_config_path(path)
+            p = resolve_path(path, base_dir=self.base_dir)
             if not p.exists(): # if path doesn't exist, throw an error
                 raise FileNotFoundError(f"Path specified for '{model_name}' does not exist. Path {path}")
             elif p.suffix.lower() == '.csv': # if it's just one csv path, add it 
@@ -451,7 +436,7 @@ class Config:
 
         
         # `output_path`-specific key check
-        output_path = self._resolve_config_path(self.config['output_path'])
+        output_path = resolve_path(self.config['output_path'], base_dir=self.base_dir)
         if output_path.exists() and not output_path.is_dir():
             raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
         self.output_path = output_path 
@@ -472,7 +457,7 @@ class Config:
         score_file_path = self.config["score_file_path"]
 
         # `score_file_path`-specific key checks
-        self.score_file_path = self._resolve_config_path(score_file_path)
+        self.score_file_path = resolve_path(score_file_path, base_dir=self.base_dir)
         if not self.score_file_path.exists():
             raise FileNotFoundError(f"Score file not found: {self.score_file_path}")
         if not self.score_file_path.is_file():
@@ -480,7 +465,7 @@ class Config:
 
         # `output_path`-specific key checks
         output_path = self.config["output_path"]
-        self.plot_output_dir = self._resolve_config_path(output_path)
+        self.plot_output_dir = resolve_path(output_path, base_dir=self.base_dir)
         self.plot_output_dir.mkdir(parents=True, exist_ok=True)
         if not self.plot_output_dir.is_dir():
             raise ValueError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}")
