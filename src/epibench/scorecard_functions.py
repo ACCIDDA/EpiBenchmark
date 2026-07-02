@@ -12,17 +12,17 @@ ScorecardMetric = Callable[[pd.DataFrame], Any]
 
 
 def total_wis(score_file: pd.DataFrame) -> Any:
-    """Compute the total weighted interval score for a challenge."""
+    """Total (sum) of WIS across all locations, target end dates, horizons."""
     pass
 
 
 def coverage_50(score_file: pd.DataFrame) -> Any:
-    """Compute the 50 percent quantile coverage score for a challenge."""
+    """Average 50% interval coverage across all locations, target end dates, horizons."""
     pass
 
 
 def coverage_90(score_file: pd.DataFrame) -> Any:
-    """Compute the 90 percent quantile coverage score for a challenge."""
+    """Average 90% interval coverage across all locations, target end dates, horizons."""
     pass
 
 

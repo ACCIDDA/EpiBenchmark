@@ -48,6 +48,7 @@ class Config:
 
         logger.info("Success ✅")
 
+
     def validate_setup_config(self):
         """
         A method to validate a config for the `setup` pipeline.
@@ -298,6 +299,7 @@ class Config:
         self.output_path = resolve_output_dir(
             self.config["output_path"], base_dir=self.base_dir
         )
+
 
     def validate_plot_config(self):
         """

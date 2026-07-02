@@ -45,6 +45,7 @@ def _score_models(
     baseline_model: str,
 ) -> pd.DataFrame:
     """Run scoringutils (R) and return the resulting score table."""
+    
     logger.info("Validating model data...")
     model_dict, locations_list = extract_model_data_details(
         hub_path=hub_path,
@@ -79,25 +80,30 @@ def _write_output_csv(
     output_data: pd.DataFrame | dict[str, object],
     output_dir: Path,
 ) -> Path:
-    """Write scores or scorecard output to disk and return the output path."""
+    """
+    Write scores or scorecard output to disk and return the output path.
+    No overwrites.
+    """
+
     output_dir.mkdir(parents=True, exist_ok=True)
+    # name for score csv
     if output_kind == "scores":
         output_path = output_dir / SCORES_FILENAME
         output_df = output_data
         error_label = "Score"
+    # name for scorecard csv
     else:
         output_path = output_dir / SCORECARD_FILENAME
         output_df = pd.DataFrame([output_data])
         error_label = "Scorecard"
-
+    # no overwrites
     if output_path.exists():
-        raise FileExistsError(
-            f"{error_label} output file already exists and will not be overwritten: {output_path}"
-        )
-
+        raise FileExistsError(f"{error_label} output file already exists and will not be overwritten: {output_path}")
+    # ensure type coercion worked
     if not isinstance(output_df, pd.DataFrame):
         raise TypeError("Score output data must be a pandas DataFrame.")
 
+    # save
     output_df.to_csv(output_path, index=False, encoding="utf-8-sig")
     return output_path
 
