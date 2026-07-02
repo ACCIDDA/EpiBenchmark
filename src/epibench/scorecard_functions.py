@@ -13,17 +13,17 @@ ScorecardMetric = Callable[[pd.DataFrame], Any]
 
 def total_wis(score_file: pd.DataFrame) -> Any:
     """Total (sum) of WIS across all locations, target end dates, horizons."""
-    pass
+    return score_file["wis"].sum()
 
 
 def coverage_50(score_file: pd.DataFrame) -> Any:
     """Average 50% interval coverage across all locations, target end dates, horizons."""
-    pass
+    return score_file["interval_coverage_50"].astype(float).mean()
 
 
 def coverage_90(score_file: pd.DataFrame) -> Any:
     """Average 90% interval coverage across all locations, target end dates, horizons."""
-    pass
+    return score_file["interval_coverage_90"].astype(float).mean()
 
 
 SCORECARD_FUNCTIONS: dict[str, ScorecardMetric] = {
