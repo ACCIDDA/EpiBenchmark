@@ -34,10 +34,13 @@ SCORECARD_FUNCTIONS: dict[str, ScorecardMetric] = {
 
 
 def custom_scorecard(
-    scorecard_function_names: Iterable[str], score_file: pd.DataFrame
+    model_name: str, scorecard_function_names: Iterable[str], score_file: pd.DataFrame
 ) -> dict[str, Any]:
     """Execute the configured scorecard functions and return results by name."""
+
     results: dict[str, Any] = {}
+    # filter out anything besides the single model submitted
+    score_file = score_file[score_file['model'] == model_name]
 
     for function_name in scorecard_function_names:
         try:

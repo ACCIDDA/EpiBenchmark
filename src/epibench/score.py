@@ -45,7 +45,7 @@ def _score_models(
     baseline_model: str,
 ) -> pd.DataFrame:
     """Run scoringutils (R) and return the resulting score table."""
-    
+
     logger.info("Validating model data...")
     model_dict, locations_list = extract_model_data_details(
         hub_path=hub_path,
@@ -122,7 +122,7 @@ def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Pa
             raise ValueError(
                 "--model-data-path must point to a .csv file or a directory of .csv files."
             )
-        model_name = resolved_model_data_path.stem
+        model_name = "RSVHub-Ensemble" #TODO patch!!!
         model_info = {model_name: [resolved_model_data_path]}
     # fail if it is a dir with no .csvs
     elif resolved_model_data_path.is_dir():
@@ -131,7 +131,7 @@ def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Pa
             raise ValueError(
                 f"No CSV files were found at --model-data-path {resolved_model_data_path}."
             )
-        model_name = resolved_model_data_path.name
+        model_name = "RSVHub-Ensemble" #TODO patch!!!
         model_info = {model_name: csv_paths}
     # fail if neither dir nor .csv
     else:
@@ -139,7 +139,7 @@ def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Pa
             "--model-data-path must point to a .csv file or a directory of .csv files."
         )
 
-    return model_info, resolved_model_data_path
+    return model_name, model_info, resolved_model_data_path
 
 
 def _score_from_config(config_path: str) -> None:
@@ -180,8 +180,7 @@ def score_from_challenge_library(
     challenge_definition = library_challenge_entries[challenge_name]
     logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
 
-    # TODO, verify what _resolve_model_info() does 
-    model_info, _ = _resolve_model_info(model_data_path)
+    model_name, model_info, _ = _resolve_model_info(model_data_path)
     output_dir = resolve_output_dir(output_path)
 
     # set target 
@@ -196,7 +195,7 @@ def score_from_challenge_library(
     hub_path = hub_clone_setup(hub_url=challenge_definition["hub_path"])
 
     # set baseline model, add to include models list
-    baseline_model = challenge_definition["basline_model"]
+    baseline_model = challenge_definition["baseline_model"]
     include_models = [baseline_model]
 
     # send to general scoring function (to be sent to R scoringutils)
@@ -211,11 +210,12 @@ def score_from_challenge_library(
     )
 
     score_output_path = _write_output_csv("scores", scores, output_dir)
-    logger.info(f"Output file at {score_output_path}")
+    logger.info(f"Output scoring file at {score_output_path}")
 
     # build scorecard using custom function registry
     scorecard_results = custom_scorecard(
-        challenge_definition["scorecard_function"],
+        model_name=model_name,
+        scorecard_function_names=challenge_definition["scorecard_function"],
         score_file=scores,
     )
     scorecard_output_path = _write_output_csv("scorecard", scorecard_results, output_dir)
