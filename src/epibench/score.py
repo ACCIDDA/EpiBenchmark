@@ -108,7 +108,10 @@ def _write_output_csv(
     return output_path
 
 
-def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Path]:
+def _resolve_model_info(
+    model_data_path: str,
+    model_name: str,
+) -> tuple[str, dict[str, list[Path]], Path]:
     """Normalize a library-route model path into the model_info shape used by scoring."""
     resolved_model_data_path = resolve_path(model_data_path)
     # fail if it does not exist
@@ -122,7 +125,6 @@ def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Pa
             raise ValueError(
                 "--model-data-path must point to a .csv file or a directory of .csv files."
             )
-        model_name = "RSVHub-Ensemble" #TODO patch!!!
         model_info = {model_name: [resolved_model_data_path]}
     # fail if it is a dir with no .csvs
     elif resolved_model_data_path.is_dir():
@@ -131,7 +133,6 @@ def _resolve_model_info(model_data_path: str) -> tuple[dict[str, list[Path]], Pa
             raise ValueError(
                 f"No CSV files were found at --model-data-path {resolved_model_data_path}."
             )
-        model_name = "RSVHub-Ensemble" #TODO patch!!!
         model_info = {model_name: csv_paths}
     # fail if neither dir nor .csv
     else:
@@ -165,6 +166,7 @@ def _score_from_config(config_path: str) -> None:
 def score_from_challenge_library(
     challenge_name: str,
     model_data_path: str,
+    model_name: str,
     output_path: str,
 ) -> None:
     """Run challenge library scoring (scores CSV + scorecard)"""
@@ -180,7 +182,7 @@ def score_from_challenge_library(
     challenge_definition = library_challenge_entries[challenge_name]
     logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
 
-    model_name, model_info, _ = _resolve_model_info(model_data_path)
+    model_name, model_info, _ = _resolve_model_info(model_data_path, model_name)
     output_dir = resolve_output_dir(output_path)
 
     # set target 
@@ -225,6 +227,7 @@ def score_from_challenge_library(
 def score(
     challenge_name: str | None = None,
     model_data_path: str | None = None,
+    model_name: str | None = None,
     output_path: str | None = None,
     config_path: str | None = None,
 ) -> None:
@@ -244,11 +247,12 @@ def score(
         if (
             challenge_name is not None
             or model_data_path is not None
+            or model_name is not None
             or output_path is not None
         ):
             raise click.UsageError(
                 "When using --config-path, do not provide challenge-name, "
-                "--model-data-path, or --output-path."
+                "--model-data-path, --model-name, or --output-path."
             )
         # othwerise, score normally
         _score_from_config(config_path=config_path)
@@ -269,6 +273,10 @@ def score(
         raise click.UsageError(
             "--model-data-path is required when using a library challenge."
         )
+    if model_name is None:
+        raise click.UsageError(
+            "--model-name is required when using a library challenge."
+        )
     # fail if no --output-path wih challenge name
     if output_path is None:
         raise click.UsageError(
@@ -278,6 +286,7 @@ def score(
     score_from_challenge_library(
         challenge_name=challenge_name,
         model_data_path=model_data_path,
+        model_name=model_name,
         output_path=output_path,
     )
     logger.info("Process executed successfully to end 🎉.")

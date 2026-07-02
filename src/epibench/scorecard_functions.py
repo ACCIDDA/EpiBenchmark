@@ -42,13 +42,12 @@ def custom_scorecard(
     # filter out anything besides the single model submitted
     score_file = score_file[score_file['model'] == model_name]
 
+    # run all the functions we need for the scorecard
     for function_name in scorecard_function_names:
         try:
             scorecard_function = SCORECARD_FUNCTIONS[function_name]
         except KeyError as exc:
-            raise ValueError(
-                f"Unknown scorecard function requested: {function_name}"
-            ) from exc
+            raise ValueError(f"Unknown scorecard function requested: {function_name}") from exc
 
         results[function_name] = scorecard_function(score_file)
 
