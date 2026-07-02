@@ -7,13 +7,23 @@ EpiBench is a work-in-progress benchmarking tool for evaluating performance of i
 - Git
 - R and the `scoringutils` package for the `epibench score` command
 
+## Quick Start
+```bash
+git clone https://github.com/ACCIDDA/EpiBenchmark.git
+cd EpiBenchmark
+uv sync --locked
+uv run epibench --help
+```
+
 ## Installation
 
 Clone the repository:
 
+```bash
 git clone https://github.com/ACCIDDA/EpiBenchmark.git
 
 cd EpiBenchmark
+```
 
 EpiBenchmark supports installation using either **uv** (recommended) or **pip**.
 
