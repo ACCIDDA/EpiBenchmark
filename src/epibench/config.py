@@ -120,7 +120,7 @@ class Config:
                     targets.append(target)
         else:
             raise ValueError(f"Please pass your `targets` key as a list of values. Received '{type(self.config['targets'])}'")
-        self.targets = self.config["targets"]
+        self.targets = sorted(self.config["targets"])
         
 
         # `dates` -specific key check 
