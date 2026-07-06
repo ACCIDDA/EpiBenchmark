@@ -39,7 +39,29 @@ def setup(config_path: str | None) -> None:
 
 @cli.command(
     short_help="Score model output against ground truth.",
-    help="Command to score (WIS) model forecasts against ground truth data.",
+    help=(
+        "Command to score model forecasts either from a challenge in the "
+        "EpiBenchmark library or from a user-provided configuration file."
+    ),
+)
+@click.argument("challenge_name", required=False)
+@click.option(
+    "--model-data-path",
+    type=str,
+    required=False,
+    help="Absolute path to the model data to process with a library challenge.",
+)
+@click.option(
+    "--model-name",
+    type=str,
+    required=False,
+    help="Model name to use for the library challenge route and scorecard filtering.",
+)
+@click.option(
+    "--output-path",
+    type=str,
+    required=False,
+    help="Path to the directory where score outputs should be written for a library challenge.",
 )
 @click.option(
     "--config-path",
@@ -47,11 +69,23 @@ def setup(config_path: str | None) -> None:
     required=False,
     help="Absolute path to your YAML configuration file.",
 )
-def score(config_path: str | None) -> None:
+def score(
+    challenge_name: str | None,
+    model_data_path: str | None,
+    model_name: str | None,
+    output_path: str | None,
+    config_path: str | None,
+) -> None:
     """Run the EpiBench score pipeline."""
     from .score import score as run_score
 
-    run_score(config_path=config_path)
+    run_score(
+        challenge_name=challenge_name,
+        model_data_path=model_data_path,
+        model_name=model_name,
+        output_path=output_path,
+        config_path=config_path,
+    )
 
 
 @cli.command(

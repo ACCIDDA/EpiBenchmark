@@ -1,11 +1,13 @@
 """Validate YAML configuration file input."""
 
 import logging
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
+
 import yaml
 
-from .gt_from_hub import hub_clone_setup
+from .hub_date_utils import validate_setup_dates_against_hub_rounds
+from .path_utils import resolve_hub_path, resolve_output_dir, resolve_path
 
 logger = logging.getLogger(__name__)
 
@@ -46,36 +48,6 @@ class Config:
 
         logger.info("Success ✅")
 
-    def _resolve_config_path(self, path_value: str | Path) -> Path:
-        """
-        Resolve config-provided paths.
-
-        Relative paths are interpreted relative to the config file location.
-        Absolute paths are preserved.
-        """
-        path = Path(path_value).expanduser()
-        if not path.is_absolute():
-            path = self.base_dir / path
-        return path.resolve()
-
-    def _resolve_hub_path(self, hub_path_value: str) -> Path:
-        """
-        Resolve and validate a local hub path, or clone a GitHub URL.
-        """
-        if hub_path_value.startswith(("http://", "https://")) and "github.com" in hub_path_value:
-            return hub_clone_setup(hub_url=hub_path_value)
-
-        hub_path = self._resolve_config_path(hub_path_value)
-        if not hub_path.is_dir():
-            raise ValueError(
-                f"`hub_path` ({hub_path_value}) either does not exist on this machine "
-                "or does not point to a directory."
-            )
-        target_data_dir = hub_path / "target-data"
-        if not target_data_dir.is_dir():
-            raise ValueError("`hub_path` does not contain a required 'target-data/' directory.")
-        return hub_path
-
 
     def validate_setup_config(self):
         """
@@ -86,6 +58,8 @@ class Config:
         - .challenge_name
         - .targets
         - .dates
+        - .gt_cutoff_dates
+        - .hub_round_label
         - .vintaging
         - .vintaging_method (None if not vintaging)
         - .output_path 
@@ -103,7 +77,8 @@ class Config:
             raise KeyError(f"Config file is missing required keys: {missing}")
         
         # `hub-path`-specific key check
-        self.hub_path = self._resolve_hub_path(self.config["hub_path"])
+        self.hub_path = resolve_hub_path(self.config["hub_path"], base_dir=self.base_dir)
+        self.challenge_name = self.config.get("challenge_name")
 
         #`challenge_name`-specific key check (no checks right now)
         # ensure it is a str
@@ -208,12 +183,19 @@ class Config:
         else: # if we aren't doing vintaging at all, set the vintaging_method to None
             self.vintaging_method = None
 
+        self.dates, self.gt_cutoff_dates, self.hub_round_label = (
+            validate_setup_dates_against_hub_rounds(
+                hub_path=self.hub_path,
+                requested_dates=self.dates,
+                targets=self.targets,
+            )
+        )
+
 
         # `output_path`-specific key check 
-        output_path = self._resolve_config_path(self.config['output_path'])
-        if output_path.exists() and not output_path.is_dir():
-            raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
-        self.output_path = output_path 
+        self.output_path = resolve_output_dir(
+            self.config["output_path"], base_dir=self.base_dir
+        )
 
 
     def validate_score_config(self): 
@@ -243,7 +225,7 @@ class Config:
             raise KeyError(f"Config file is missing required keys: {missing}")
         
         # `hub-path`-specific key check
-        self.hub_path = self._resolve_hub_path(self.config["hub_path"])
+        self.hub_path = resolve_hub_path(self.config["hub_path"], base_dir=self.base_dir)
         
         # `evaluation_start_date` and `evaluation_end_date`-specific key check
         # ensure they can be coerced as dates
@@ -299,7 +281,7 @@ class Config:
         model_info = {}
         for model_name, path in self.config['models'].items():
             data_files_list = []
-            p = self._resolve_config_path(path)
+            p = resolve_path(path, base_dir=self.base_dir)
             if not p.exists(): # if path doesn't exist, throw an error
                 raise FileNotFoundError(f"Path specified for '{model_name}' does not exist. Path {path}")
             elif p.suffix.lower() == '.csv': # if it's just one csv path, add it 
@@ -319,10 +301,10 @@ class Config:
 
         
         # `output_path`-specific key check
-        output_path = self._resolve_config_path(self.config['output_path'])
-        if output_path.exists() and not output_path.is_dir():
-            raise NotADirectoryError(f"Config `output_path` key must be a directory. Received {output_path}")
-        self.output_path = output_path 
+        self.output_path = resolve_output_dir(
+            self.config["output_path"], base_dir=self.base_dir
+        )
+
 
     def validate_plot_config(self):
         """
@@ -340,18 +322,14 @@ class Config:
         score_file_path = self.config["score_file_path"]
 
         # `score_file_path`-specific key checks
-        self.score_file_path = self._resolve_config_path(score_file_path)
+        self.score_file_path = resolve_path(score_file_path, base_dir=self.base_dir)
         if not self.score_file_path.exists():
             raise FileNotFoundError(f"Score file not found: {self.score_file_path}")
         if not self.score_file_path.is_file():
             raise ValueError(f"score_file_path must be a file. Received: {self.score_file_path}")
-        # logger.info(
-            #f"Validated score file: {self.score_file_path}.")
-        # TODO, column checks here, read in as pd.DataFrame
 
         # `output_path`-specific key checks
         output_path = self.config["output_path"]
-        self.plot_output_dir = self._resolve_config_path(output_path)
-        self.plot_output_dir.mkdir(parents=True, exist_ok=True)
-        if not self.plot_output_dir.is_dir():
-            raise ValueError(f"plot_output_dir must be a directory. Received: {self.plot_output_dir}")
+        self.plot_output_dir = resolve_output_dir(
+            output_path, base_dir=self.base_dir
+        )
