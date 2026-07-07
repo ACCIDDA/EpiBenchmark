@@ -26,12 +26,26 @@ SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash, s
 SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash, should be challenge-name
 
 
-def _load_library_challenges() -> dict[str, object]:
-    """Load the EpiBenchmark challenge library (challenges.json)."""
-    challenges_path = resources.files("epibench").joinpath(
-        "challenges-library", "challenges.json"
-    )
-    with challenges_path.open("r", encoding="utf-8") as challenges_file:
+def _load_library_challenge(challenge_name: str) -> dict[str, object]:
+    """Load one EpiBenchmark library challenge from the challenges-library directory."""
+    challenges_dir = resources.files("epibench").joinpath("challenges-library")
+    requested_name = Path(challenge_name).stem
+
+    available_challenge_files = {
+        challenge_path.stem: challenge_path
+        for challenge_path in challenges_dir.iterdir()
+        if challenge_path.is_file() and challenge_path.suffix.lower() == ".json"
+    }
+
+    challenge_path = available_challenge_files.get(requested_name)
+    if challenge_path is None:
+        available_challenge_names = ", ".join(sorted(available_challenge_files))
+        raise click.ClickException(
+            "that challenge is not in the EpiBenchmark challenge library. "
+            f"Available challenges: {available_challenge_names}"
+        )
+
+    with challenge_path.open("r", encoding="utf-8") as challenges_file:
         return json.load(challenges_file)
 
 
@@ -171,15 +185,8 @@ def score_from_challenge_library(
 ) -> None:
     """Run challenge library scoring (scores CSV + scorecard)"""
 
-    # fail if provided challenge is not in our library
     logger.info("Loading challenge library...")
-    library_challenges = _load_library_challenges()
-    library_challenge_entries = library_challenges.get("challenges", {})
-    if challenge_name not in library_challenge_entries:
-        raise click.ClickException(
-            "that challenge is not in the EpiBenchmark challenge library"
-        )
-    challenge_definition = library_challenge_entries[challenge_name]
+    challenge_definition = _load_library_challenge(challenge_name)
     logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
 
     model_name, model_info, _ = _resolve_model_info(model_data_path, model_name)
