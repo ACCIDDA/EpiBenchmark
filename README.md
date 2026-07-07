@@ -2,6 +2,10 @@
 
 EpiBench is a work-in-progress benchmarking tool for evaluating performance of infectious disease forecasting models. The package is still in development.
 
+## Choose the installation guide that matches your environment:
+- **Personal computer or standard Linux workstation (Windows/macOS/Linux):** Continue with the instructions below.
+- **High-performance computing (HPC) cluster:** See [`installation_longleaf`](https://accidda.github.io/EpiBenchmark/getting-started/installation_longleaf/).
+
 ## Requirements
 - Python 3.10 or later
 - Git
@@ -150,7 +154,7 @@ The repository includes a `Makefile` with several convenience commands for commo
 
 ### Install with uv
 - `make install-uv`
-  Installs EpiBenchmark using the recommended `uv` workflow: `uv sync --locked`
+  Installs EpiBenchmark using the recommended `uv` workflow: `uv sync --locked`.
   This installs the project and its dependencies according to the committed `uv.lock` file.
 
 ### Synchronize the environment
@@ -159,7 +163,7 @@ The repository includes a `Makefile` with several convenience commands for commo
 
 ### Regenerate the lock file
 - `make lock` runs `uv lock`
-  Regnerates the `uv.lock` file fafter updating project dependencies.
+  Regnerates the `uv.lock` file after updating project dependencies.
 
 ### Test the command-line interface
 - `make test-cli`
@@ -172,7 +176,7 @@ The repository includes a `Makefile` with several convenience commands for commo
 
 ### Remove the virtual environment
 - `make clean`
-  Deletes the local `.venv` directory, allowing users to create a fresh environment.
+  Deletes the local `.venv` directory, allowing users to create a fresh virtual environment.
 
 ### Using a different Python interpreter
 By default, the Makefile uses the system python3 executable. Users can override it when creating the virtual environment:
