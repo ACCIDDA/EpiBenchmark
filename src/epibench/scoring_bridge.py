@@ -38,6 +38,26 @@ scores <- score(forecast_object)
 write.csv(scores, output_csv, row.names = FALSE)
 """
 
+R_SCRIPT_NOT_FOUND_ERROR = """\
+Could not find Rscript on your PATH.
+
+To run 'epibench score' command, users need:
+
+  • An R installation
+  • Rscript available on your PATH
+  • The CRAN package 'scoringutils'
+
+On HPC systems, users may need to load an R module first:
+
+    module avail R
+    module load R/<version>
+
+Then verify:
+
+    Rscript --version
+    Rscript -e "library(scoringutils)"
+"""
+
 
 class ScoringBridge:
     """Run scoringutils via an external Rscript process."""
@@ -46,9 +66,8 @@ class ScoringBridge:
         self.baseline_model = baseline_model
         self.rscript_executable = rscript_executable or shutil.which("Rscript")
         if not self.rscript_executable:
-            raise RuntimeError(
-                "Could not find `Rscript` on PATH. Install R and ensure `Rscript` is available."
-            )
+            raise RuntimeError(R_SCRIPT_NOT_FOUND_ERROR)
+
 
     # score with R scoringutils
     def score_forecasts(self, data: pd.DataFrame) -> pd.DataFrame:
