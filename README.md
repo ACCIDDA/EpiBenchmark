@@ -51,7 +51,7 @@ uv sync
 source .venv/bin/activate
 ```
 
-Alternatively, you can run commands without activating the environment:
+Alternatively, users can run commands without activating the environment:
 
 ```bash
 uv run epibench --help
@@ -94,7 +94,7 @@ After installation, verify that the command-line interface is available:
 ```bash
 epibench --help
 ```
-You can also verify the available subcommands:
+Users can also verify the available subcommands:
 
 ```bash
 epibench setup --help
@@ -108,7 +108,7 @@ The Python virtual environment only manages EpiBenchmark's Python dependencies.
 The `epibench score` command also calls `Rscript`, so scoring has two external
 requirements:
 
-- `Rscript` must be available on your `PATH`
+- `Rscript` must be available on users' `PATH`
 - the CRAN package `scoringutils` must be installed in the R library used by
   that `Rscript`
 
@@ -131,36 +131,58 @@ Rscript -e 'library(scoringutils)'
 ```
 
 If `epibench score` reports that `Rscript` or `scoringutils` is missing, make
-sure they are installed in the same R environment used by your `Rscript`
+sure they are installed in the same R environment used by `Rscript`
 command.
 
 ## Makefile Shortcuts
 
-The repository includes a `Makefile` with several convenience commands.
+The repository includes a `Makefile` with several convenience commands for common development tasks. These shortcuts are primarily intended for macOS and Linux users. Windows users can run the equivalent commands directly from the command line.
 
-Available commands:
+### Create a virtual environment
 
 - `make venv`
-  Creates the project virtual environment.
-- `make install`
+  Creates a project-local virtual environment in `.venv`.
+
+### Install with pip
+- `make install` or `make install-pip`
   Creates the virtual environment if needed, upgrades `pip`, and installs
-  EpiBenchmark in editable mode.
+  EpiBenchmark in editable mode using `pip`.
+
+### Install with uv
+- `make install-uv`
+  Installs EpiBenchmark using the recommended `uv` workflow: `uv sync --locked`
+  This installs the project and its dependencies according to the committed `uv.lock` file.
+
+### Synchronize the environment
+- `make sync` runs `uv sync`
+  This command is intended primarily for developers after project dependencies have changed.
+
+### Regenerate the lock file
+- `make lock` runs `uv lock`
+  Regnerates the `uv.lock` file fafter updating project dependencies.
+
+### Test the command-line interface
 - `make test-cli`
-  Runs a small CLI smoke test for:
+  Runs a basci CLI smoke test for:
   - `epibench`
   - `epibench --help`
   - `epibench setup --help`
   - `epibench score --help`
   - `epibench plot --help`
 
-If your Python executable has a different name, you can override it:
+### Remove the virtual environment
+- `make clean`
+  Deletes the local `.venv` directory, allowing users to create a fresh environment.
+
+### Using a different Python interpreter
+By default, the Makefile uses the system python3 executable. Users can override it when creating the virtual environment:
 
 ```bash
-make install PYTHON=python3
+make install-pip PYTHON=python3.11
 ```
 
-or for a specific version:
+or
 
 ```bash
-make install PYTHON=python3.11
+make venv PYTHON=/path/to/python
 ```
