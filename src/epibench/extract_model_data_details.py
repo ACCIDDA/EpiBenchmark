@@ -88,6 +88,7 @@ def extract_model_data_details(
 
         # pathway for their specified model data
         processed_dfs = [] # keep a model-level list of all dfs
+        excluded_due_to_eval_range = []
         for csv_path in model_info[model]:
 
             # read in as pd.DataFrame, ensure non-empty
@@ -138,10 +139,13 @@ def extract_model_data_details(
             df['target_end_date'] = pd.to_datetime(df['target_end_date'])
             df = df[df['target_end_date'].between(eval_start_date, eval_end_date)]
             if df.empty:
-                raise ValueError(
-                    f"Model {model} file {csv_path.name} is empty when filtering between eval "
-                    f"start date {eval_start_date} and eval end date {eval_end_date}."
+                excluded_due_to_eval_range.append(csv_path.name)
+                logger.info(
+                    f"Model {model} CSV data file {csv_path.name} has no target_end_date values "
+                    f"between eval start date {eval_start_date} and eval end date {eval_end_date}. "
+                    "Excluding it from scoring."
                 )
+                continue
 
             # filter out only output_type == quantile
             df = df[df['output_type'] == 'quantile']
@@ -161,10 +165,23 @@ def extract_model_data_details(
 
         # ensure that there are ANY dfs in the list for that model
         if not processed_dfs:
+                excluded_files_msg = (
+                    f" Excluded files with no target_end_date values in range: "
+                    f"{', '.join(excluded_due_to_eval_range)}."
+                    if excluded_due_to_eval_range
+                    else ""
+                )
                 raise ValueError(
                     f"No valid data found for model '{model}' after filtering. "
-                    "Ensure CSV files contain valid hubverse data."
+                    f"Ensure CSV files contain valid hubverse data with target_end_date values "
+                    f"between {eval_start_date} and {eval_end_date}.{excluded_files_msg}"
                 )
+        if excluded_due_to_eval_range:
+            logger.info(
+                f"Excluded {len(excluded_due_to_eval_range)} file(s) for model {model} because "
+                f"they had no target_end_date values in the evaluation range: "
+                f"{', '.join(excluded_due_to_eval_range)}"
+            )
         # concatenate all dfs in processed_dfs for one model
         concatenated_df = pd.concat(processed_dfs, ignore_index=True)
         # append to dictionary
