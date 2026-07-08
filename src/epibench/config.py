@@ -62,6 +62,7 @@ class Config:
         - .hub_round_label
         - .vintaging
         - .vintaging_method (None if not vintaging)
+        - .vintaging_offset (None if not vintaging)
         - .output_path 
         """
 
@@ -167,8 +168,9 @@ class Config:
             if not (isinstance(vintaging, str) and vintaging.lower() in ['true', 'false']):
                 raise ValueError(f"Config `vintaging` key must be a boolean. Received '{vintaging}'")
         self.vintaging = vintaging if isinstance(vintaging, bool) else vintaging.lower() == 'true'
-        # if we are doing vintaging, ensure the vintaging_method is set and valid
+        # if we are doing vintaging, ensure the vintaging_method and vintaging_offset are set and valid
         if (self.vintaging):
+            # vintaging_method
             if 'vintaging_method' not in self.config:
                 raise ValueError(
                     "`vintaging_method` key must be included if `vintaging` is set to TRUE.\n"
@@ -180,14 +182,29 @@ class Config:
                 if not self.config["vintaging_method"].lower() in ["as_of", "checkout"]:
                     raise ValueError(f"`vintaging_method` must be one of ['as_of', 'checkout']. Received: {self.config['vintaging_method']}")
             self.vintaging_method = self.config["vintaging_method"]
-        else: # if we aren't doing vintaging at all, set the vintaging_method to None
+            # vintaging_offset
+            if 'vintaging_offset' not in self.config:
+                raise ValueError(
+                    "`vintaging_offset` key must be included if `vintaging` is set to TRUE. "
+                    "Please specify a positive integer, negative integer, or 0."
+                )
+            else:
+                if isinstance(self.config["vintaging_offset"], bool) or not isinstance(self.config["vintaging_offset"], int):
+                    raise ValueError(
+                        f"`vintaging_offset` must be of type 'int' (positive, negative, or 0). "
+                        f"Received: {type(self.config['vintaging_offset'])}"
+                    )
+            self.vintaging_offset = self.config["vintaging_offset"]
+        else: # if we aren't doing vintaging at all, set the appropriate values
             self.vintaging_method = None
+            self.vintaging_offset = 0 # no vintaging offset for non-vintaged runs (use the date itself)
 
         self.dates, self.gt_cutoff_dates, self.hub_round_label = (
             validate_setup_dates_against_hub_rounds(
                 hub_path=self.hub_path,
                 requested_dates=self.dates,
                 targets=self.targets,
+                gt_cutoff_offset=self.vintaging_offset,
             )
         )
 

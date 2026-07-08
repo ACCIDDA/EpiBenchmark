@@ -54,17 +54,22 @@ def _parse_season_bounds(
 
 # TODO, reveal this to user (don't make it both silent and automatic; give notice/option)
 # TODO, ensure this is robust (same across all hubs)
-def _derive_gt_cutoff_dates(requested_dates: list[str]) -> list[str]:
+def _derive_gt_cutoff_dates(
+    requested_dates: list[str],
+    offset_days: int,
+) -> list[str]:
     """
-    Derive truth cutoff dates from forecast dates.
+    Derive truth cutoff dates from setup/reference dates.
 
-    EpiBench setup dates represent Saturday forecast/reference dates; the
-    corresponding truth cutoff is the preceding Wednesday.
+    ``offset_days`` is applied directly to each requested date:
+    - ``0`` keeps the cutoff date aligned with the requested date
+    - negative values move the cutoff earlier
+    - positive values move the cutoff later
     """
     return [
         (
             datetime.strptime(requested_date, "%Y-%m-%d").date()
-            - timedelta(days=3)
+            + timedelta(days=offset_days)
         ).strftime("%Y-%m-%d")
         for requested_date in requested_dates
     ]
@@ -74,6 +79,7 @@ def validate_setup_dates_against_hub_rounds(
     hub_path: Path,
     requested_dates: list[str],
     targets: list[str],
+    gt_cutoff_offset: int,
 ) -> tuple[list[str], list[str], str | None]:
     """
     Validate setup dates against bundled hub season boundaries.
@@ -85,7 +91,7 @@ def validate_setup_dates_against_hub_rounds(
 
     Returns:
     - validated setup dates
-    - gt cutoff dates (forecast date Saturday -> truth cutoff Wednesday)
+    - gt cutoff dates derived from each setup date plus ``gt_cutoff_offset``
     - matched season label, if validation was possible
     """
     del targets  # date validation now relies only on bundled hub season metadata
@@ -99,7 +105,11 @@ def validate_setup_dates_against_hub_rounds(
             "validating setup dates against the hard-coded season library.",
             hub_name,
         )
-        return requested_dates, _derive_gt_cutoff_dates(requested_dates), None
+        return (
+            requested_dates,
+            _derive_gt_cutoff_dates(requested_dates, offset_days=gt_cutoff_offset),
+            None,
+        )
 
     season_matches: list[str] = []
     requested_date_objects = [
@@ -148,4 +158,8 @@ def validate_setup_dates_against_hub_rounds(
             f"{invalid_dates}"
         )
 
-    return requested_dates, _derive_gt_cutoff_dates(requested_dates), matched_season_name
+    return (
+        requested_dates,
+        _derive_gt_cutoff_dates(requested_dates, offset_days=gt_cutoff_offset),
+        matched_season_name,
+    )

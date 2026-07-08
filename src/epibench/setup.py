@@ -27,6 +27,7 @@ def setup(config_path=None):
     # .dates (list of dates as strs)
     # .vintaging (bool)
     # .vintaging_method (str | None)
+    # .vintaging_offset (int)
     # .output_path (Path)
 
     # go to hub, get gt data!
@@ -85,6 +86,7 @@ def _build_challenge_id(config_object: Config) -> str:
       - dates
       - vintaging
       - vintaging_method
+      - vintaging_offset
 
     Returns:
         challenge_name_hash (str)
@@ -121,6 +123,7 @@ def _build_challenge_id(config_object: Config) -> str:
         "dates": config_object.dates,
         "vintaging": config_object.vintaging,
         "vintaging_method": config_object.vintaging_method,
+        "vintaging_offset": config_object.vintaging_offset,
     }
 
     # Convert to a JSON string
