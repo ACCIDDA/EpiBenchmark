@@ -15,7 +15,7 @@ EpiBench is a work-in-progress benchmarking tool for evaluating performance of i
 ```bash
 git clone https://github.com/ACCIDDA/EpiBenchmark.git
 cd EpiBenchmark
-uv sync --locked
+uv sync
 uv run epibench --help
 ```
 
@@ -35,8 +35,6 @@ EpiBenchmark supports installation using either **uv** (recommended) or **pip**.
 
 This is the fastet installation method.
 
-If the repository includes a `uv.lock` file, install using:
-
 ```bash
 uv sync
 ```
@@ -55,7 +53,7 @@ uv sync
 source .venv/bin/activate
 ```
 
-Alternatively, users can run commands without activating the environment:
+Alternatively, users can run commands without activating the virtual environment when using `uv`:
 
 ```bash
 uv run epibench --help
@@ -96,6 +94,7 @@ python -m pip install -e .
 After installation, verify that the command-line interface is available:
 
 ```bash
+epibench
 epibench --help
 ```
 Users can also verify the available subcommands:
@@ -106,7 +105,7 @@ epibench score --help
 epibench plot --help
 ```
 
-## Scoring Requirements
+## R Requirements for Scoring
 
 The Python virtual environment only manages EpiBenchmark's Python dependencies.
 The `epibench score` command also calls `Rscript`, so scoring has two external
@@ -138,55 +137,22 @@ If `epibench score` reports that `Rscript` or `scoringutils` is missing, make
 sure they are installed in the same R environment used by `Rscript`
 command.
 
-## Makefile Shortcuts
 
-The repository includes a `Makefile` with several convenience commands for common development tasks. These shortcuts are primarily intended for macOS and Linux users. Windows users can run the equivalent commands directly from the command line.
+## Remove the virtual environment
+Deletes the local `.venv` directory, allowing users to create a fresh virtual environment.
 
-### Create a virtual environment
-
-- `make venv`
-  Creates a project-local virtual environment in `.venv`.
-
-### Install with pip
-- `make install` or `make install-pip`
-  Creates the virtual environment if needed, upgrades `pip`, and installs
-  EpiBenchmark in editable mode using `pip`.
-
-### Install with uv
-- `make install-uv`
-  Installs EpiBenchmark using the recommended `uv` workflow: `uv sync --locked`.
-  This installs the project and its dependencies according to the committed `uv.lock` file.
-
-### Synchronize the environment
-- `make sync` runs `uv sync`
-  This command is intended primarily for developers after project dependencies have changed.
-
-### Regenerate the lock file
-- `make lock` runs `uv lock`
-  Regnerates the `uv.lock` file after updating project dependencies.
-
-### Test the command-line interface
-- `make test-cli`
-  Runs a basci CLI smoke test for:
-  - `epibench`
-  - `epibench --help`
-  - `epibench setup --help`
-  - `epibench score --help`
-  - `epibench plot --help`
-
-### Remove the virtual environment
-- `make clean`
-  Deletes the local `.venv` directory, allowing users to create a fresh virtual environment.
-
-### Using a different Python interpreter
-By default, the Makefile uses the system python3 executable. Users can override it when creating the virtual environment:
-
+### Windows
+If Command Prompt:
 ```bash
-make install-pip PYTHON=python3.11
+rmdir /s /q .venv 
 ```
 
-or
-
+If PowerShell
 ```bash
-make venv PYTHON=/path/to/python
+Remove-Item -Recurse -Force .venv (PowerShell)
+```
+
+### macOS/Linux
+```bash
+rm -rf .venv
 ```
