@@ -28,6 +28,7 @@ def _extra_models(
         raise ConnectionError(
             f"Could not establish connection to hub {hub_path} to retrieve extra "
             f"model ({model_name}) data. Error: {e}"
+            
         )
     # filter for the things we need
     data_return['target_end_date'] = pd.to_datetime(data_return['target_end_date'])
@@ -85,11 +86,11 @@ def extract_model_data_details(
     global_locations_list = []
     model_dict = {}
     for model in model_info:
-
+        
         # pathway for their specified model data
         processed_dfs = [] # keep a model-level list of all dfs
         for csv_path in model_info[model]:
-
+            
             # read in as pd.DataFrame, ensure non-empty
             df = pd.read_csv(csv_path)
             if df.empty:
@@ -104,7 +105,7 @@ def extract_model_data_details(
                 'output_type': str
                 }
             )
-
+            
             # check for required columns
             missing = set(REQUIRED_MODEL_DATA_COLUMNS) - set(df.columns)
             if missing:
@@ -158,7 +159,7 @@ def extract_model_data_details(
 
             # add to model-level list of dfs
             processed_dfs.append(df)
-
+        
         # ensure that there are ANY dfs in the list for that model
         if not processed_dfs:
                 raise ValueError(
@@ -171,7 +172,7 @@ def extract_model_data_details(
         model_dict[model] = concatenated_df
 
     locations_list = list(set(global_locations_list))
-
+    
     # get extra model data
     for extra_model in include_models:
         df = _extra_models(
