@@ -44,7 +44,7 @@ EpiBenchmark is being developed at UNC Chapel Hill through [ACCIDDA](https://www
 - [Installation](getting-started/installation.md) – install the EpiBenchmark package
 
 ### Installation_Longleaf Guide
-- [Installation_Longleaf](getting-started/installation_longleaf.md) - install the EpiBenchmark package on UNC Loneleaf Cluster
+- [Installation_Longleaf](getting-started/installation_longleaf.md) - install the EpiBenchmark package on UNC Longleaf Cluster
 
 ## Attribution
 
