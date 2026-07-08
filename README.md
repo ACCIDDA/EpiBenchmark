@@ -147,7 +147,7 @@ If Command Prompt:
 rmdir /s /q .venv 
 ```
 
-If PowerShell
+If PowerShell:
 ```bash
 Remove-Item -Recurse -Force .venv (PowerShell)
 ```
