@@ -57,10 +57,14 @@ def _score_models(
     evaluation_end_date,
     target: str,
     baseline_model: str,
+    required_target_end_dates: list[str] | None = None,
+    required_locations: list[str] | None = None,
+    required_horizons: list[str] | None = None,
 ) -> pd.DataFrame:
     """Run scoringutils (R) and return the resulting score table."""
 
     logger.info("Validating model data...")
+    # right now, strict facet processing will only occur if it is a scorecard run
     model_dict, locations_list = extract_model_data_details(
         hub_path=hub_path,
         model_info=model_info,
@@ -68,6 +72,9 @@ def _score_models(
         eval_start_date=evaluation_start_date,
         eval_end_date=evaluation_end_date,
         target=target,
+        required_target_end_dates=required_target_end_dates,
+        required_locations=required_locations,
+        required_horizons=required_horizons,
     )
 
     logger.info("Retrieving and formatting ground truth data...")
@@ -216,6 +223,9 @@ def score_from_challenge_library(
         evaluation_end_date=evaluation_end_date,
         target=target,
         baseline_model=baseline_model,
+        required_target_end_dates=challenge_definition["target_end_dates"],
+        required_locations=challenge_definition["locations"],
+        required_horizons=challenge_definition["horizons"],
     )
 
     score_output_path = _write_output_csv("scores", scores, output_dir)

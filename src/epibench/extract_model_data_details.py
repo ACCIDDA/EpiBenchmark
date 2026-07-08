@@ -1,12 +1,87 @@
 """Function to gather information about the model data to be scored."""
 
 import logging
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 from hubdata import connect_hub
 
 REQUIRED_MODEL_DATA_COLUMNS = ['reference_date', 'target', 'horizon', 'target_end_date', 'location', 'output_type', 'output_type_id', 'value']
 logger = logging.getLogger(__name__)
+
+
+def _format_missing_combinations(
+        missing_df: pd.DataFrame,
+        model_name: str,
+    ) -> str:
+    """
+    Construct a human-readable error for missing challenge grid combinations.
+    """
+
+    grouped = (
+        missing_df.groupby(["target_end_date", "location"])["horizon"]
+        .agg(lambda horizons: sorted(set(horizons), key=lambda horizon: int(horizon) if str(horizon).isdigit() else str(horizon)))
+        .reset_index()
+    )
+
+    details = [
+        f"{row.target_end_date}, location {row.location}: missing horizons {', '.join(row.horizon)}"
+        for row in grouped.itertuples(index=False)
+    ]
+    details_text = "\n".join(details)
+    # return pretty error message
+    return (
+        f"Model '{model_name}' is missing {len(missing_df)} required "
+        "target_end_date/location/horizon combination(s) for this library challenge.\n"
+        "Every challenge target_end_date, location, and horizon combination must be present "
+        "in the input model data before a scorecard can be generated.\n"
+        f"{details_text}"
+    )
+
+
+def _validate_required_challenge_grid(
+        df: pd.DataFrame,
+        model_name: str,
+        required_target_end_dates: list[str],
+        required_locations: list[str],
+        required_horizons: list[str],
+    ) -> None:
+    """
+    Ensure all required challenge date/location/horizon combinations exist.
+    For library challenges only.
+    """
+    normalized_required_dates = [
+        pd.Timestamp(target_end_date).strftime("%Y-%m-%d")
+        for target_end_date in required_target_end_dates
+    ]
+    normalized_required_locations = [str(location) for location in required_locations]
+    normalized_required_horizons = [str(horizon) for horizon in required_horizons]
+
+    expected = pd.MultiIndex.from_product(
+        [
+            normalized_required_dates,
+            normalized_required_locations,
+            normalized_required_horizons,
+        ],
+        names=["target_end_date", "location", "horizon"],
+    ).to_frame(index=False)
+
+    observed = (
+        df.assign(target_end_date=df["target_end_date"].dt.strftime("%Y-%m-%d"))
+        [["target_end_date", "location", "horizon"]]
+        .drop_duplicates()
+    )
+
+    missing_df = expected.merge(
+        observed,
+        on=["target_end_date", "location", "horizon"],
+        how="left",
+        indicator=True,
+    )
+    missing_df = missing_df[missing_df["_merge"] == "left_only"].drop(columns="_merge")
+    # if there are missing combinations
+    if not missing_df.empty:
+        raise ValueError(_format_missing_combinations(missing_df, model_name))
 
 
 def _extra_models(
@@ -56,7 +131,10 @@ def extract_model_data_details(
         include_models: list,
         eval_start_date: str, 
         eval_end_date: str, 
-        target: str
+        target: str,
+        required_target_end_dates: list[str] | None = None,
+        required_locations: list[str] | None = None,
+        required_horizons: list[str] | None = None,
     ) -> tuple[dict[str, pd.DataFrame], list[str]]:
     """
     Iteratively pre-process model data; run more checks
@@ -73,6 +151,16 @@ def extract_model_data_details(
             (inclusive).
         target: Data target to be scored on. Only one target is supported per
             run.
+        
+        THESE PARAMS ARE CURRENTLY ONLY REQUIRED FOR CHALLENGE LIBRARY
+        SCORECARD RUNS:
+        required_target_end_dates: Required target_end_dates for strict
+            library-challenge validation. When provided with locations and
+            horizons, all combinations must appear in the user model data.
+        required_locations: Required locations for strict library-challenge
+            validation.
+        required_horizons: Required horizons for strict library-challenge
+            validation.
 
     Returns:
         A tuple containing:
@@ -82,6 +170,17 @@ def extract_model_data_details(
         - A deduplicated list of locations found across the processed model
             data.
     """
+    # enable strict value checks if this is scorecard run
+    # i.e., required values are provided as params
+    strict_grid_validation_enabled = all(
+        value is not None
+        for value in (
+            required_target_end_dates,
+            required_locations,
+            required_horizons,
+        )
+    )
+
     global_locations_list = []
     model_dict = {}
     for model in model_info:
@@ -97,6 +196,11 @@ def extract_model_data_details(
                 logger.warning(f"Model {model} CSV data file {csv_path.name} is an empty file. Skipping to next CSV.")
                 continue # skip to next if empty (non-fatal)
 
+            # check for required columns
+            missing = set(REQUIRED_MODEL_DATA_COLUMNS) - set(df.columns)
+            if missing:
+                raise ValueError(f"{model} CSV data file {csv_path.name} is missing columns: {missing}.")
+
             # datatype assertions, ensure these are read in as strings
             df = df.astype(
                 {'target': str,
@@ -105,11 +209,6 @@ def extract_model_data_details(
                 'output_type': str
                 }
             )
-
-            # check for required columns
-            missing = set(REQUIRED_MODEL_DATA_COLUMNS) - set(df.columns)
-            if missing:
-                raise ValueError(f"{model} CSV data file {csv_path.name} is missing columns: {missing}.")
 
             # drop all other columns (we don't use them in this package)
             to_drop = [col for col in df.columns if col not in REQUIRED_MODEL_DATA_COLUMNS]
@@ -184,6 +283,14 @@ def extract_model_data_details(
             )
         # concatenate all dfs in processed_dfs for one model
         concatenated_df = pd.concat(processed_dfs, ignore_index=True)
+        if strict_grid_validation_enabled:
+            _validate_required_challenge_grid(
+                df=concatenated_df,
+                model_name=model,
+                required_target_end_dates=required_target_end_dates,
+                required_locations=required_locations,
+                required_horizons=required_horizons,
+            )
         # append to dictionary
         model_dict[model] = concatenated_df
 
