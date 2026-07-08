@@ -4,7 +4,13 @@ This guide describes how to install and use EpiBenchmark on the UNC Longleaf HPC
 
 ## Prerequisites
 
-Before installing EpiBenchmark, load a compatible Python module.
+Before installing EpiBenchmark, verify or load a compatible Python module.
+
+Verify the Python version:
+
+```bash
+python --version
+```
 
 List the available Python versions:
 
@@ -19,7 +25,6 @@ module load python/3.11
 ```
 
 > **Note**
->
 > The exact module name may change over time. Use `module avail python` to see the versions currently available on Longleaf.
 
 Clone the repository:
@@ -39,10 +44,10 @@ First, verify whether `uv` is available:
 uv --version
 ```
 
-If `uv` is installed, create the environment:
+If `uv` is installed, create the virtual environment and install `EpiBenchmark` package:
 
 ```bash
-uv sync --locked
+uv sync
 ```
 
 Activate the environment:
@@ -72,7 +77,13 @@ Make sure your user-level executable directory is on your `PATH`. Users can run 
 Then run:
 
 ```bash
-uv sync --locked
+uv sync
+```
+
+Verify the installation:
+
+```bash
+epibench --help
 ```
 
 ---
@@ -97,7 +108,7 @@ Upgrade pip:
 python -m pip install --upgrade pip
 ```
 
-Install EpiBenchmark:
+Install `EpiBenchmark` package:
 
 ```bash
 python -m pip install -e .
@@ -119,7 +130,14 @@ To run `epibench score` command, users need:
 * `Rscript`
 * the CRAN package `scoringutils`
 
-Check that R is available:
+
+Verify the R version:
+
+```bash
+Rscript --version
+```
+
+If R is not installed, check that R is available:
 
 ```bash
 module spider r
@@ -133,27 +151,35 @@ module load r
 
 ## R library setup
 Before installing `scoringutils`, check whether R already has a personal library configured:
+
 ```bash
 Rscript -e '.libPaths()'
 ```
+
 This is because R will try to install packages into the system library if no users' personal library configured. That system directory is owned by the Longleaf administrators, ordinary users cannot write to it.
 
 If there isn't a user library, create one.
+
 ```bash
-mkdir -p ~/R/x86_64-pc-linux-gnu-library/4.4
+mkdir -p ~/R/x86_64-pc-linux-gnu-library/<R_version_installed_in_longleaf>
+e.g. mkdir -p ~/R/x86_64-pc-linux-gnu-library/4.4
 ```
 
+**Note**: 4.4 will be used in the following command examples.
+
 Add the created user library to `libPaths` and verify:
+
 ```bash
 Rscript -e '.libPaths(c("~/R/x86_64-pc-linux-gnu-library/4.4", .libPaths())); print(.libPaths())'
 ```
+
 Users should see the following:
 ```
 [1] "/home/<onyen_ID>/R/x86_64-pc-linux-gnu-library/4.4"
 [2] "/nas/longleaf/rhel9/apps/r/4.4.0/lib64/R/library"
 ```
 
-## Install `scoringutils`
+## Install package `scoringutils`
 Once the user-level library exists, run:
 
 ```bash
@@ -193,6 +219,7 @@ source .venv/bin/activate
 Example commands:
 
 ```bash
+epibench
 epibench --help
 epibench setup --help
 epibench score --help
@@ -203,50 +230,4 @@ Deactivate the environment when finished:
 
 ```bash
 deactivate
-```
-
----
-
-# Troubleshooting
-
-### Python version
-
-Verify the Python version:
-
-```bash
-python --version
-```
-
-EpiBenchmark requires Python **3.10 or newer**.
-
-### Missing `uv`
-
-If `uv` is unavailable, install it with:
-
-```bash
-python -m pip install --user uv
-```
-
-or use the pip installation method instead.
-
-### Missing `Rscript`
-
-Verify that R is available:
-
-```bash
-Rscript --version
-
-or 
-
-module spider r
-```
-
-If this command fails, load the appropriate R module or contact the Longleaf administrators.
-
-### Missing `scoringutils`
-
-Install the package into the same R environment used by `Rscript`:
-
-```bash
-Rscript -e 'install.packages("scoringutils")'
 ```
