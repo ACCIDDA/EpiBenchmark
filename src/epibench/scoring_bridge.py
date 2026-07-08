@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -106,7 +107,7 @@ class ScoringBridge:
                 stderr = result.stderr.strip()
                 stdout = result.stdout.strip()
                 details = "\n".join(part for part in [stdout, stderr] if part)
-                if "there is no package called 'scoringutils'" in details or "there is no package called 'scoringutils'" in details:
+                if re.search(r"there is no package called .*scoringutils", details):
                     raise RuntimeError(
                         "R scoring process failed because the R package `scoringutils` is not installed.\n"
                         "Install it in R with:\n"
