@@ -175,6 +175,9 @@ def _score_from_challenge_library(
     model_name, model_info, _ = _resolve_model_info(model_data_path, model_name)
     output_dir = resolve_output_dir(output_path)
 
+    # set quantiles
+    quantiles = challenge_definition["quantiles"]
+
     # set target
     target = str(challenge_definition["target"])
 
@@ -204,7 +207,7 @@ def _score_from_challenge_library(
     )
 
     logger.info("Validating quantile structure...")
-    validate_for_scoring_library_challenge_quantiles(model_dict)
+    validate_for_scoring_library_challenge_quantiles(model_dict, quantiles)
 
     logger.info("Retrieving and formatting ground truth data...")
     gto = GroundTruth(

@@ -1,7 +1,10 @@
 """Validation helpers for forecast quantile inputs used in scoring."""
 
+import logging
+
 import pandas as pd
 
+# 1 forecast unit = 1 unique combination of model, target_end_date, reference_date, location, horizon 
 FORECAST_UNIT_COLUMNS = [
     "model",
     "reference_date",
@@ -10,11 +13,103 @@ FORECAST_UNIT_COLUMNS = [
     "horizon",
 ]
 QUANTILE_ROUNDING_DIGITS = 10
+logger = logging.getLogger(__name__)
 
 
-def validate_for_scoring_library_challenge_quantiles(model_dict: dict[str, pd.DataFrame]) -> None:
-    """write"""
-    pass # TODO 
+def validate_for_scoring_library_challenge_quantiles(model_dict: dict[str, pd.DataFrame], quantiles: list[float]) -> None:
+    """
+    Validate quantile data for challenge-library scoring.
+
+    For library challenges, forecast units must include all quantiles required by the
+    challenge definition. Additional quantiles are allowed, but they are removed
+    before scoring and reported to the user via a logger message.
+
+    Fails if:
+        - TODO 
+    """
+
+    required_quantiles = tuple(
+        sorted({round(float(quantile), QUANTILE_ROUNDING_DIGITS) for quantile in quantiles})
+    )
+    # for each model in model_data (should just be one model)
+    for model_name, forecast_df in model_dict.items():
+        normalized = forecast_df.copy()
+        normalized["quantile_level_raw"] = normalized["quantile_level"]
+        normalized["quantile_level"] = pd.to_numeric(
+            normalized["quantile_level"], errors="coerce"
+        )
+
+        # fail if any quantile level is non-numeric or outside [0, 1]
+        invalid_quantiles = normalized[
+            normalized["quantile_level"].isna()
+            | ~normalized["quantile_level"].between(0, 1, inclusive="both")
+        ]
+        if not invalid_quantiles.empty:
+            first_invalid = invalid_quantiles.iloc[0]
+            forecast_unit = ", ".join(
+                f"{column}={first_invalid[column]}" for column in FORECAST_UNIT_COLUMNS
+            )
+            raise ValueError(
+                f"Model '{model_name}' contains an invalid quantile level "
+                f"'{first_invalid['quantile_level_raw']}' for forecast unit "
+                f"{forecast_unit}. Quantile levels must be numeric values "
+                "between 0 and 1 inclusive."
+            )
+
+        normalized["quantile_level"] = normalized["quantile_level"].round(
+            QUANTILE_ROUNDING_DIGITS
+        )
+
+        extra_quantiles_found = set()
+
+        for _, group in normalized.groupby(FORECAST_UNIT_COLUMNS, sort=False):
+            group = group.sort_values("quantile_level")
+            forecast_unit_row = group.iloc[0]
+            forecast_unit = ", ".join(
+                f"{column}={forecast_unit_row[column]}"
+                for column in FORECAST_UNIT_COLUMNS
+            )
+            quantile_levels = tuple(group["quantile_level"].tolist())
+            unique_quantile_levels = tuple(sorted(set(quantile_levels)))
+
+            # fail if a forecast unit repeats the same quantile level more than once.
+            if len(quantile_levels) != len(unique_quantile_levels):
+                raise ValueError(
+                    f"Model '{model_name}' contains duplicate quantile levels for "
+                    f"forecast unit {forecast_unit}. Found quantile grid "
+                    f"[{', '.join(f'{quantile_level:g}' for quantile_level in quantile_levels)}]."
+                )
+
+            # fail if a forecast unit is missing any quantile required by the challenge.
+            missing_quantiles = sorted(
+                set(required_quantiles) - set(unique_quantile_levels)
+            )
+            if missing_quantiles:
+                raise ValueError(
+                    f"Model '{model_name}' is missing required challenge quantiles "
+                    f"[{', '.join(f'{quantile_level:g}' for quantile_level in missing_quantiles)}] "
+                    f"for forecast unit {forecast_unit}. Required challenge quantiles are "
+                    f"[{', '.join(f'{quantile_level:g}' for quantile_level in required_quantiles)}]."
+                )
+
+            extra_quantiles = sorted(
+                set(unique_quantile_levels) - set(required_quantiles)
+            )
+            extra_quantiles_found.update(extra_quantiles)
+        # non-fatal warning for extra quantiles being filtered out 
+        if extra_quantiles_found:
+            logger.info(
+                "Model %s contains extra quantiles [%s] beyond the required "
+                "challenge quantiles [%s]. These extra quantile rows will be excluded "
+                "from scoring.",
+                model_name,
+                ", ".join(f"{quantile_level:g}" for quantile_level in sorted(extra_quantiles_found)),
+                ", ".join(f"{quantile_level:g}" for quantile_level in required_quantiles),
+            )
+
+        model_dict[model_name] = normalized[
+            normalized["quantile_level"].isin(required_quantiles)
+        ].copy()
 
 
 def validate_for_scoring_config_quantiles(model_dict: dict[str, pd.DataFrame]) -> None:
