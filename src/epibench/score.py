@@ -1,7 +1,5 @@
 """Start of the `score` pipeline."""
 
-from __future__ import annotations
-
 import json
 import logging
 from importlib import resources
@@ -16,6 +14,10 @@ from .extract_model_data_details import extract_model_data_details
 from .ground_truth import GroundTruth
 from .gt_from_hub import hub_clone_setup
 from .path_utils import resolve_output_dir, resolve_path
+from .quantile_validation import (
+    validate_for_scoring_config_quantiles,
+    validate_for_scoring_library_challenge_quantiles,
+)
 from .scorecard_functions import custom_scorecard
 from .scoring_bridge import ScoringBridge
 
@@ -47,53 +49,6 @@ def _load_library_challenge(challenge_name: str) -> dict[str, object]:
 
     with challenge_path.open("r", encoding="utf-8") as challenges_file:
         return json.load(challenges_file)
-
-
-def _score_models(
-    hub_path: Path,
-    model_info: dict[str, list[Path]],
-    include_models: list[str],
-    evaluation_start_date,
-    evaluation_end_date,
-    target: str,
-    baseline_model: str,
-    required_target_end_dates: list[str] | None = None,
-    required_locations: list[str] | None = None,
-    required_horizons: list[str] | None = None,
-) -> pd.DataFrame:
-    """Run scoringutils (R) and return the resulting score table."""
-
-    logger.info("Validating model data...")
-    # right now, strict facet processing will only occur if it is a scorecard run
-    model_dict, locations_list = extract_model_data_details(
-        hub_path=hub_path,
-        model_info=model_info,
-        include_models=include_models,
-        eval_start_date=evaluation_start_date,
-        eval_end_date=evaluation_end_date,
-        target=target,
-        required_target_end_dates=required_target_end_dates,
-        required_locations=required_locations,
-        required_horizons=required_horizons,
-    )
-
-    logger.info("Retrieving and formatting ground truth data...")
-    gto = GroundTruth(
-        hub_path=hub_path,
-        target=target,
-        locations=locations_list,
-        eval_start_date=evaluation_start_date,
-        eval_end_date=evaluation_end_date,
-    )
-
-    df = pd.concat(model_dict.values(), ignore_index=True)
-    df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
-        columns=["target"]
-    )
-
-    logger.info("Scoring model data...")
-    scorer = ScoringBridge(baseline_model=baseline_model)
-    return scorer.score_forecasts(df)
 
 
 def _write_output_csv(
@@ -169,22 +124,43 @@ def _score_from_config(config_path: str) -> None:
     logger.info("Validating config...")
     config_object = Config(config_path=config_path, pipeline="score")
 
-    scores = _score_models(
+    logger.info("Validating model data...")
+    model_dict, locations_list = extract_model_data_details(
         hub_path=config_object.hub_path,
         model_info=config_object.model_info,
         include_models=config_object.include_models,
-        evaluation_start_date=config_object.evaluation_start_date,
-        evaluation_end_date=config_object.evaluation_end_date,
+        eval_start_date=config_object.evaluation_start_date,
+        eval_end_date=config_object.evaluation_end_date,
         target=config_object.target,
-        baseline_model=config_object.baseline_model,
     )
+
+    logger.info("Validating quantile structure...")
+    validate_for_scoring_config_quantiles(model_dict)
+
+    logger.info("Retrieving and formatting ground truth data...")
+    gto = GroundTruth(
+        hub_path=config_object.hub_path,
+        target=config_object.target,
+        locations=locations_list,
+        eval_start_date=config_object.evaluation_start_date,
+        eval_end_date=config_object.evaluation_end_date,
+    )
+
+    df = pd.concat(model_dict.values(), ignore_index=True)
+    df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
+        columns=["target"]
+    )
+
+    logger.info("Scoring model data...")
+    scorer = ScoringBridge(baseline_model=config_object.baseline_model)
+    scores = scorer.score_forecasts(df)
 
     full_output_path = _write_output_csv("scores", scores, config_object.output_path)
     logger.info("Process executed successfully to end 🎉.")
     logger.info(f"Output file at {full_output_path}")
 
 
-def score_from_challenge_library(
+def _score_from_challenge_library(
     challenge_name: str,
     model_data_path: str,
     model_name: str,
@@ -199,7 +175,7 @@ def score_from_challenge_library(
     model_name, model_info, _ = _resolve_model_info(model_data_path, model_name)
     output_dir = resolve_output_dir(output_path)
 
-    # set target 
+    # set target
     target = str(challenge_definition["target"])
 
     # set eval start and end
@@ -214,19 +190,39 @@ def score_from_challenge_library(
     baseline_model = challenge_definition["baseline_model"]
     include_models = [baseline_model]
 
-    # send to general scoring function (to be sent to R scoringutils)
-    scores = _score_models(
+    logger.info("Validating model data...")
+    model_dict, locations_list = extract_model_data_details(
         hub_path=hub_path,
         model_info=model_info,
         include_models=include_models,
-        evaluation_start_date=evaluation_start_date,
-        evaluation_end_date=evaluation_end_date,
+        eval_start_date=evaluation_start_date,
+        eval_end_date=evaluation_end_date,
         target=target,
-        baseline_model=baseline_model,
         required_target_end_dates=challenge_definition["target_end_dates"],
         required_locations=challenge_definition["locations"],
         required_horizons=challenge_definition["horizons"],
     )
+
+    logger.info("Validating quantile structure...")
+    validate_for_scoring_library_challenge_quantiles(model_dict)
+
+    logger.info("Retrieving and formatting ground truth data...")
+    gto = GroundTruth(
+        hub_path=hub_path,
+        target=target,
+        locations=locations_list,
+        eval_start_date=evaluation_start_date,
+        eval_end_date=evaluation_end_date,
+    )
+
+    df = pd.concat(model_dict.values(), ignore_index=True)
+    df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
+        columns=["target"]
+    )
+
+    logger.info("Scoring model data...")
+    scorer = ScoringBridge(baseline_model=baseline_model)
+    scores = scorer.score_forecasts(df)
 
     score_output_path = _write_output_csv("scores", scores, output_dir)
     logger.info(f"Output scoring file at {score_output_path}")
@@ -300,7 +296,7 @@ def score(
             "--output-path is required when using a library challenge."
         )
     # otherwise, score score normally + build scorecard 
-    score_from_challenge_library(
+    _score_from_challenge_library(
         challenge_name=challenge_name,
         model_data_path=model_data_path,
         model_name=model_name,
