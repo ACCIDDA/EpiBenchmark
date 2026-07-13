@@ -25,7 +25,12 @@ def validate_for_scoring_library_challenge_quantiles(model_dict: dict[str, pd.Da
     before scoring and reported to the user via a logger message.
 
     Fails if:
-        - TODO 
+        - quantiles outside of [0,1]
+        - duplicate quantiles found in one forecast unit
+        - any required quantiles are missing for a forecast unit
+    
+    This function allows extra quantiles to exist, but it filters
+    them out and logs this to the user.
     """
 
     required_quantiles = tuple(
