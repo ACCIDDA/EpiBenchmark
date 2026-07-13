@@ -1,4 +1,4 @@
-"""Helpers for hub schedule metadata and setup-date validation."""
+"""Helper functions for hub schedule metadata and setup-date validation."""
 
 from __future__ import annotations
 
@@ -52,8 +52,7 @@ def _parse_season_bounds(
         )
     return season_start, season_end
 
-# TODO, reveal this to user (don't make it both silent and automatic; give notice/option)
-# TODO, ensure this is robust (same across all hubs)
+
 def _derive_gt_cutoff_dates(
     requested_dates: list[str],
     offset_days: int,
@@ -73,6 +72,94 @@ def _derive_gt_cutoff_dates(
         ).strftime("%Y-%m-%d")
         for requested_date in requested_dates
     ]
+
+
+def _warn_on_vintaging_offset_mismatch(hub_path: Path, vintaging_cutoff: int) -> None:
+    """
+    Logs a warning to the user if:
+        - the configured vintaging cutoff cannot be verified against hub tasks.json file
+          because the file/keys cannot be found
+        - the configured vintaging cutoff does not match a hubs' set submissions_due 'end' key
+
+    Silent success if the required file/keys are found and the submissions_due 'end'
+    key matches the configured vintaging cutoff.
+
+    This checks ``hub-config/tasks.json`` for any nested ``submissions_due`` blocks and
+    compares their nested ``end`` values against the supplied ``vintaging_cutoff``.
+    """
+
+    def _find_nested_values(payload: object, target_key: str) -> list[object]:
+        """Return all values found for ``target_key`` anywhere in a nested JSON payload."""
+        matches: list[object] = []
+        if isinstance(payload, dict):
+            for key, value in payload.items():
+                if key == target_key:
+                    matches.append(value)
+                matches.extend(_find_nested_values(value, target_key))
+        elif isinstance(payload, list):
+            for item in payload:
+                matches.extend(_find_nested_values(item, target_key))
+        return matches
+
+    tasks_json_path = hub_path / "hub-config" / "tasks.json"
+
+    # warn if we cannot find tasks.json
+    if not tasks_json_path.is_file():
+        logger.warning(
+            "Could not cross-check vintaging cutoff %s against hub metadata because "
+            "%s was not found. Proceeding with processing.",
+            vintaging_cutoff,
+            tasks_json_path,
+        )
+        return
+
+    # warn if we found but could not load tasks.json
+    try:
+        with tasks_json_path.open("r", encoding="utf-8") as tasks_json_file:
+            tasks_payload = json.load(tasks_json_file)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning(
+            "Could not cross-check vintaging cutoff %s against hub metadata because "
+            "%s could not be read: %s. Proceeding with processing.",
+            vintaging_cutoff,
+            tasks_json_path,
+            exc,
+        )
+        return
+
+    # warn if we found tasks.json but could not find 'submissions_due' key
+    submissions_due_blocks = _find_nested_values(tasks_payload, "submissions_due")
+    if not submissions_due_blocks:
+        logger.warning(
+            "Could not cross-check vintaging cutoff %s against hub metadata because "
+            "no 'submissions_due' key was found in %s. Proceeding with processing.",
+            vintaging_cutoff,
+            tasks_json_path,
+        )
+        return
+
+    # warn if we could not find 'end' key
+    end_values: list[object] = []
+    for submissions_due_block in submissions_due_blocks:
+        end_values.extend(_find_nested_values(submissions_due_block, "end"))
+    if not end_values:
+        logger.warning(
+            "Could not cross-check vintaging cutoff %s against hub metadata because "
+            "no nested 'end' key was found under 'submissions_due' in %s. Proceeding with processing.",
+            vintaging_cutoff,
+            tasks_json_path,
+        )
+        return
+
+    # warn if everything was found, but value did not match configured cutoff 
+    if vintaging_cutoff not in end_values:
+        logger.warning(
+            "Please note that configured vintaging cutoff %s does not match the hub metadata in %s. "
+            "Found submissions_due.end value(s): %s. Proceeding with processing.",
+            vintaging_cutoff,
+            tasks_json_path,
+            sorted(set(end_values), key=str),
+        )
 
 
 def validate_setup_dates_against_hub_rounds(
@@ -95,6 +182,10 @@ def validate_setup_dates_against_hub_rounds(
     - matched season label, if validation was possible
     """
     del targets  # date validation now relies only on bundled hub season metadata
+    _warn_on_vintaging_offset_mismatch(
+        hub_path=hub_path,
+        vintaging_cutoff=gt_cutoff_offset,
+    )
 
     hub_name = _normalize_hub_name(hub_path)
     hub_date_library = load_hub_date_library()
