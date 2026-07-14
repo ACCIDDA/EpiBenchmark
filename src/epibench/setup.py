@@ -7,7 +7,7 @@ import hashlib
 import json
 
 from .config import Config
-from .gt_from_hub import gt_from_hub
+from .setup_ground_truth import gt_from_hub
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

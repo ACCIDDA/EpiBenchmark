@@ -11,8 +11,8 @@ import pandas as pd
 
 from .config import Config
 from .extract_model_data_details import extract_model_data_details
-from .ground_truth import GroundTruth
-from .gt_from_hub import hub_clone_setup
+from .scoring_ground_truth import ScoringGroundTruth
+from .setup_ground_truth import hub_clone_setup
 from .path_utils import resolve_output_dir, resolve_path
 from .quantile_validation import (
     validate_for_scoring_config_quantiles,
@@ -138,7 +138,7 @@ def _score_from_config(config_path: str) -> None:
     validate_for_scoring_config_quantiles(model_dict)
 
     logger.info("Retrieving and formatting ground truth data...")
-    gto = GroundTruth(
+    gto = ScoringGroundTruth(
         hub_path=config_object.hub_path,
         target=config_object.target,
         locations=locations_list,
@@ -210,7 +210,7 @@ def _score_from_challenge_library(
     validate_for_scoring_library_challenge_quantiles(model_dict, quantiles)
 
     logger.info("Retrieving and formatting ground truth data...")
-    gto = GroundTruth(
+    gto = ScoringGroundTruth(
         hub_path=hub_path,
         target=target,
         locations=locations_list,

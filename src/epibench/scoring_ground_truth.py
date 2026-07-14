@@ -1,4 +1,4 @@
-"""Class for ground truth data that corresponds to the model data to be scored"""
+"""Scoring-time ground truth data prepared to match model outputs."""
 
 
 import pandas as pd
@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 # these columns can be dropped after processing has occurred
 COLUMNS_TO_KEEP = ['observed', 'target_end_date', 'location', 'target']
 
-class GroundTruth:
+class ScoringGroundTruth:
     def __init__(self, hub_path: Path, target: str, locations: list, eval_start_date: str, eval_end_date: str):
         """
-        Initialization of the GroundTruth class. Pulls directly from a hub local clone using hubdata package.
+        Initialize ScoringGroundTruth from a local hub clone using hubdata.
         Limited validation required.
         """
         self.target = target

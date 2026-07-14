@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .gt_from_hub import hub_clone_setup
+from .setup_ground_truth import hub_clone_setup
 
 
 def resolve_path(path_value: str | Path, base_dir: str | Path | None = None) -> Path:
