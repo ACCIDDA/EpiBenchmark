@@ -128,13 +128,14 @@ def validate_for_scoring_config_quantiles(model_dict: dict[str, pd.DataFrame]) -
     Fatal failure if:
         - quantiles outside of [0, 1] are found
         - non-numeric quantiles are found
-        - a median quantile is not present (0.5)
+        - the minimum safe scoring grid is not present (0.05, 0.25, 0.5, 0.75, 0.95)
         - a forecast unit repeats a quantile more than once
         - the number of quantiles is unbalanced for a forecat unit
         - a forecast unit has asymmetrical quantiles
         - different quantile units are used across models
         - different quantile units are used within a model
     """
+    minimum_safe_scoring_grid = (0.05, 0.25, 0.5, 0.75, 0.95)
 
     expected_quantile_grid: tuple[float, ...] | None = None
     expected_grid_model: str | None = None
@@ -192,12 +193,19 @@ def validate_for_scoring_config_quantiles(model_dict: dict[str, pd.DataFrame]) -
                     f"[{', '.join(f'{quantile_level:g}' for quantile_level in quantile_levels)}]."
                 )
 
-            # fail if a forecast unit does not include the median quantile.
-            if 0.5 not in unique_quantile_levels:
+            # fail if a forecast unit does not include the minimum grid needed for
+            # the default scoringutils metrics we compute.
+            missing_minimum_safe_quantiles = sorted(
+                set(minimum_safe_scoring_grid) - set(unique_quantile_levels)
+            )
+            if missing_minimum_safe_quantiles:
                 raise ValueError(
-                    f"Model '{model_name}' is missing the median quantile (0.5) "
+                    f"Model '{model_name}' is missing required quantiles "
+                    f"[{', '.join(f'{quantile_level:g}' for quantile_level in missing_minimum_safe_quantiles)}] "
                     f"for forecast unit {forecast_unit}. Config-route scoring "
-                    "requires a symmetric quantile grid that includes 0.5."
+                    "requires at least the minimum safe quantile grid "
+                    f"[{', '.join(f'{quantile_level:g}' for quantile_level in minimum_safe_scoring_grid)}] "
+                    "to support the default scoringutils metrics."
                 )
 
             # fail if the number of lower and upper quantiles is unbalanced
