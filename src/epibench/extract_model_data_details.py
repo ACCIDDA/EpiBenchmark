@@ -300,6 +300,7 @@ def extract_model_data_details(
         # pathway for their specified model data
         processed_dfs = [] # keep a model-level list of all dfs
         excluded_due_to_eval_range = []
+        excluded_due_to_target = []
         excluded_due_to_challenge_facets = []
         for csv_path in model_info[model]:
 
@@ -330,22 +331,30 @@ def extract_model_data_details(
             # add column for model name (`model`)
             df['model'] = model 
 
-            # target enforcements
-            current_model_target_s = set(df['target'])
-            # ensure there is only 1 per model csv
-            if len(current_model_target_s) > 1:
-                raise ValueError(
-                    f"{model} CSV data file {csv_path.name} `target` column has more than one unique value. "
-                    f"Currently, `epibench score` only handles model data with a single unique target."
+            # keep only the requested target and report any others being excluded
+            current_model_targets = set(df["target"])
+            excluded_targets = sorted(current_model_targets - {target})
+            if excluded_targets:
+                logger.info(
+                    "Model %s CSV data file %s contains target(s) [%s] in addition "
+                    "to the requested target [%s]. Rows for the extra target(s) will "
+                    "be excluded from scoring.",
+                    model,
+                    csv_path.name,
+                    ", ".join(excluded_targets),
+                    target,
                 )
-            else:
-                # ensure the single target found matches the one in config
-                current_model_target = next(iter(current_model_target_s))
-                if current_model_target != target:
-                    raise ValueError(
-                        f"The target ({current_model_target}) found in {model} CSV data file {csv_path.name} "
-                        f"does not match the target specified in config ({target})."
-                    )
+            df = df[df["target"] == target].copy()
+            if df.empty:
+                excluded_due_to_target.append(csv_path.name)
+                logger.info(
+                    "Model %s CSV data file %s does not contain the requested target "
+                    "[%s]. Excluding it from scoring.",
+                    model,
+                    csv_path.name,
+                    target,
+                )
+                continue
             
             # filter entries s.t. target_end_date only spans the eval start/end date 
             df['target_end_date'] = pd.to_datetime(df['target_end_date'])
@@ -365,6 +374,8 @@ def extract_model_data_details(
                 raise ValueError(f"{model} CSV data file {csv_path.name} has no entries with output_type 'quantile'.")
             df = df.drop(columns=['output_type'])
 
+            # do strict processing if it is a library challenge run 
+            # i.e., force every forecast unit combination to be present
             if strict_grid_validation_enabled:
                 pre_filter_row_count = len(df)
                 df = _filter_to_required_challenge_facets(
@@ -411,6 +422,12 @@ def extract_model_data_details(
                     if excluded_due_to_eval_range
                     else ""
                 )
+                excluded_target_files_msg = (
+                    " Excluded files with no rows for the requested target "
+                    f"[{target}]: {', '.join(excluded_due_to_target)}."
+                    if excluded_due_to_target
+                    else ""
+                )
                 excluded_challenge_facet_files_msg = (
                     " Excluded files with no rows remaining after library challenge "
                     f"facet filtering: {', '.join(excluded_due_to_challenge_facets)}."
@@ -419,10 +436,22 @@ def extract_model_data_details(
                 )
                 raise ValueError(
                     f"No valid data found for model '{model}' after filtering. "
-                    f"Ensure CSV files contain valid hubverse data with target_end_date values "
-                    f"between {eval_start_date} and {eval_end_date}.{excluded_files_msg}"
+                    f"Ensure CSV files contain the requested target [{target}] and valid hubverse "
+                    f"data with target_end_date values between {eval_start_date} and {eval_end_date}."
+                    f"{excluded_target_files_msg}{excluded_files_msg}"
                     f"{excluded_challenge_facet_files_msg}"
                 )
+        
+        # gracefully inform users of any data that has been excluded 
+        if excluded_due_to_target:
+            logger.info(
+                "Excluded %s file(s) for model %s because they did not contain "
+                "the requested target [%s]: %s",
+                len(excluded_due_to_target),
+                model,
+                target,
+                ", ".join(excluded_due_to_target),
+            )
         if excluded_due_to_eval_range:
             logger.info(
                 f"Excluded {len(excluded_due_to_eval_range)} file(s) for model {model} because "
@@ -437,6 +466,7 @@ def extract_model_data_details(
                 model,
                 ", ".join(excluded_due_to_challenge_facets),
             )
+
         # concatenate all dfs in processed_dfs for one model
         concatenated_df = pd.concat(processed_dfs, ignore_index=True)
         if strict_grid_validation_enabled:
