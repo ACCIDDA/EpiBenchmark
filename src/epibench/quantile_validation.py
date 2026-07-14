@@ -115,6 +115,7 @@ def validate_for_scoring_library_challenge_quantiles(model_dict: dict[str, pd.Da
         model_dict[model_name] = normalized[
             normalized["quantile_level"].isin(required_quantiles)
         ].copy()
+    logger.info("Success ✅")
 
 
 def validate_for_scoring_config_quantiles(model_dict: dict[str, pd.DataFrame]) -> None:
@@ -254,3 +255,5 @@ def validate_for_scoring_config_quantiles(model_dict: dict[str, pd.DataFrame]) -
                 f"but model '{expected_grid_model}' uses "
                 f"[{', '.join(f'{quantile_level:g}' for quantile_level in expected_quantile_grid)}]."
             )
+        
+    logger.info("Success ✅")
