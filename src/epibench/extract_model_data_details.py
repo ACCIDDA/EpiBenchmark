@@ -19,20 +19,37 @@ MODEL_DATA_STRING_COLUMNS = {
 logger = logging.getLogger(__name__)
 
 
+def _sort_horizon_strings(horizons: set[str] | list[str]) -> list[str]:
+    """
+    Sort horizons numerically.
+    Useful helper b/c we keep horizons as strs.
+    """
+    return sorted(
+        {str(horizon) for horizon in horizons},
+        key=lambda horizon: (
+            0,
+            int(horizon),
+        ) if str(horizon).isdigit() else (
+            1,
+            str(horizon),
+        ),
+    )
+
+
 def _stringify_challenge_facets(
-        required_target_end_dates: list[str],
+        required_reference_dates: list[str],
         required_locations: list[str],
         required_horizons: list[str],
     ) -> tuple[set[str], set[str], set[str]]:
     """Normalize library challenge facets into comparable string sets."""
-    normalized_required_dates = {
-        pd.Timestamp(target_end_date).strftime("%Y-%m-%d")
-        for target_end_date in required_target_end_dates
+    normalized_required_reference_dates = {
+        pd.Timestamp(reference_date).strftime("%Y-%m-%d")
+        for reference_date in required_reference_dates
     }
     normalized_required_locations = {str(location) for location in required_locations}
     normalized_required_horizons = {str(horizon) for horizon in required_horizons}
     return (
-        normalized_required_dates,
+        normalized_required_reference_dates,
         normalized_required_locations,
         normalized_required_horizons,
     )
@@ -42,33 +59,34 @@ def _filter_to_required_challenge_facets(
         df: pd.DataFrame,
         model_name: str,
         csv_name: str,
-        normalized_required_dates: set[str],
+        normalized_required_reference_dates: set[str],
         normalized_required_locations: set[str],
         normalized_required_horizons: set[str],
     ) -> pd.DataFrame:
     """
-    Given target_end_dates, locations, and horizons lists specified in the library challenge, 
+    Given reference_dates, locations, and horizons lists specified in the library challenge,
     filter out any excess values found and log this to user. Silent if no excess found.
     """
 
     # normalize everything to be a string, build masks to filter with
-    target_end_date_strings = df["target_end_date"].dt.strftime("%Y-%m-%d")
-    date_mask = target_end_date_strings.isin(normalized_required_dates)
+    reference_date_strings = pd.to_datetime(df["reference_date"], errors="raise").dt.strftime("%Y-%m-%d")
+    reference_date_mask = reference_date_strings.isin(normalized_required_reference_dates)
     location_mask = df["location"].isin(normalized_required_locations)
     horizon_mask = df["horizon"].isin(normalized_required_horizons)
-    keep_mask = date_mask & location_mask & horizon_mask
+    keep_mask = reference_date_mask & location_mask & horizon_mask
 
     # filter, record extras that were found
     excluded_df = df.loc[~keep_mask].copy()
     if not excluded_df.empty:
-        excluded_target_end_dates = sorted(
+        excluded_reference_dates = sorted(
             set(
-                excluded_df.loc[
-                    ~target_end_date_strings.loc[excluded_df.index].isin(
-                        normalized_required_dates
-                    ),
-                    "target_end_date",
-                ].dt.strftime("%Y-%m-%d")
+                reference_date_strings.loc[
+                    excluded_df.index[
+                        ~reference_date_strings.loc[excluded_df.index].isin(
+                            normalized_required_reference_dates
+                        )
+                    ]
+                ]
             )
         )
         excluded_locations = sorted(
@@ -79,20 +97,19 @@ def _filter_to_required_challenge_facets(
                 ]
             )
         )
-        excluded_horizons = sorted(
+        excluded_horizons = _sort_horizon_strings(
             set(
                 excluded_df.loc[
                     ~excluded_df["horizon"].isin(normalized_required_horizons),
                     "horizon",
                 ]
-            ),
-            key=lambda horizon: int(horizon) if str(horizon).isdigit() else str(horizon),
+            )
         )
 
         exclusion_reasons = []
-        if excluded_target_end_dates:
+        if excluded_reference_dates:
             exclusion_reasons.append(
-                f"target_end_dates [{', '.join(excluded_target_end_dates)}]"
+                f"reference_dates [{', '.join(excluded_reference_dates)}]"
             )
         if excluded_locations:
             exclusion_reasons.append(
@@ -119,35 +136,41 @@ def _filter_to_required_challenge_facets(
 def _validate_required_challenge_grid(
         df: pd.DataFrame,
         model_name: str,
-        normalized_required_dates: set[str],
+        normalized_required_reference_dates: set[str],
         normalized_required_locations: set[str],
         normalized_required_horizons: set[str],
     ) -> None:
     """
-    Ensure all required challenge date/location/horizon combinations exist.
-    For library challenges only.
+    Ensure all required challenge forecast units exist.
+
+    For library challenges, a required forecast unit is the required
+    combination of reference_date, location, and horizon.
     """
-    expected = pd.MultiIndex.from_product(
-        [
-            sorted(normalized_required_dates),
-            sorted(normalized_required_locations),
-            sorted(
-                normalized_required_horizons,
-                key=lambda horizon: int(horizon) if str(horizon).isdigit() else str(horizon),
-            ),
-        ],
-        names=["target_end_date", "location", "horizon"],
-    ).to_frame(index=False)
+    sorted_required_horizons = _sort_horizon_strings(normalized_required_horizons)
+    expected_rows = []
+    for reference_date in sorted(normalized_required_reference_dates):
+        for location in sorted(normalized_required_locations):
+            for horizon in sorted_required_horizons:
+                expected_rows.append(
+                    {
+                        "reference_date": reference_date,
+                        "location": location,
+                        "horizon": horizon,
+                    }
+                )
+    expected = pd.DataFrame(expected_rows)
 
     observed = (
-        df.assign(target_end_date=df["target_end_date"].dt.strftime("%Y-%m-%d"))
-        [["target_end_date", "location", "horizon"]]
+        df.assign(
+            reference_date=pd.to_datetime(df["reference_date"], errors="raise").dt.strftime("%Y-%m-%d"),
+        )
+        [["reference_date", "location", "horizon"]]
         .drop_duplicates()
     )
 
     missing_df = expected.merge(
         observed,
-        on=["target_end_date", "location", "horizon"],
+        on=["reference_date", "location", "horizon"],
         how="left",
         indicator=True,
     )
@@ -158,25 +181,22 @@ def _validate_required_challenge_grid(
         def _format_missing_combinations() -> str:
             """Construct a human-readable error for missing facet combinations."""
             grouped = (
-                missing_df.groupby(["target_end_date", "location"])["horizon"]
+                missing_df.groupby(["reference_date", "location"])["horizon"]
                 .agg(
-                    lambda horizons: sorted(
-                        set(horizons),
-                        key=lambda horizon: int(horizon) if str(horizon).isdigit() else str(horizon),
-                    )
+                    lambda horizons: _sort_horizon_strings(list(horizons))
                 )
                 .reset_index()
             )
             details = [
-                f"{row.target_end_date}, location {row.location}: missing horizons {', '.join(row.horizon)}"
+                f"{row.reference_date}, location {row.location}: missing horizons {', '.join(row.horizon)}"
                 for row in grouped.itertuples(index=False)
             ]
             details_text = "\n".join(details)
             return (
                 f"Model '{model_name}' is missing {len(missing_df)} required "
-                "target_end_date/location/horizon combination(s) for this library challenge.\n"
-                "Every challenge target_end_date, location, and horizon combination must be present "
-                "in the input model data before a scorecard can be generated.\n"
+                "forecast unit combination(s) for this library challenge.\n"
+                "Every required reference_date/location/horizon forecast unit "
+                "must be present in the input model data before a scorecard can be generated.\n"
                 f"{details_text}"
             )
 
@@ -189,7 +209,10 @@ def _extra_models(
         eval_start_date: str,
         eval_end_date: str,
         target: str,
-        locations: list[str]
+        locations: list[str],
+        required_reference_dates: list[str] | None = None,
+        required_locations: list[str] | None = None,
+        required_horizons: list[str] | None = None,
     ) -> pd.DataFrame:
     """
     write
@@ -218,6 +241,43 @@ def _extra_models(
             f"for target '{target}' between dates {eval_start_date.date()} and {eval_end_date.date()}. "
             f"Searched for locations found in provided model data: {locations}"
         )
+
+    # Match the user CSV path by normalizing challenge facet columns to strings.
+    df = df.astype(
+        {
+            "reference_date": str,
+            "horizon": str,
+            "location": str,
+        }
+    )
+
+    strict_grid_validation_enabled = all(
+        value is not None
+        for value in (
+            required_reference_dates,
+            required_locations,
+            required_horizons,
+        )
+    )
+    if strict_grid_validation_enabled:
+        (
+            normalized_required_reference_dates,
+            normalized_required_locations,
+            normalized_required_horizons,
+        ) = _stringify_challenge_facets(
+            required_reference_dates=required_reference_dates,
+            required_locations=required_locations,
+            required_horizons=required_horizons,
+        )
+        df = _filter_to_required_challenge_facets(
+            df=df,
+            model_name=model_name,
+            csv_name="hub dataset",
+            normalized_required_reference_dates=normalized_required_reference_dates,
+            normalized_required_locations=normalized_required_locations,
+            normalized_required_horizons=normalized_required_horizons,
+        )
+
     # column renaming
     df = df.rename(columns={'model_id': 'model', 'output_type_id': 'quantile_level', 'value': 'predicted'})
 
@@ -231,7 +291,7 @@ def extract_model_data_details(
         eval_start_date: str, 
         eval_end_date: str, 
         target: str,
-        required_target_end_dates: list[str] | None = None,
+        required_reference_dates: list[str] | None = None,
         required_locations: list[str] | None = None,
         required_horizons: list[str] | None = None,
     ) -> tuple[dict[str, pd.DataFrame], list[str]]:
@@ -253,7 +313,7 @@ def extract_model_data_details(
         
         THESE PARAMS ARE CURRENTLY ONLY REQUIRED FOR CHALLENGE LIBRARY
         SCORECARD RUNS:
-        required_target_end_dates: Required target_end_dates for strict
+        required_reference_dates: Required reference_dates for strict
             library-challenge validation. When provided with locations and
             horizons, all combinations must appear in the user model data.
         required_locations: Required locations for strict library-challenge
@@ -274,21 +334,21 @@ def extract_model_data_details(
     strict_grid_validation_enabled = all(
         value is not None
         for value in (
-            required_target_end_dates,
+            required_reference_dates,
             required_locations,
             required_horizons,
         )
     )
-    normalized_required_dates: set[str] = set()
+    normalized_required_reference_dates: set[str] = set()
     normalized_required_locations: set[str] = set()
     normalized_required_horizons: set[str] = set()
     if strict_grid_validation_enabled:
         (
-            normalized_required_dates,
+            normalized_required_reference_dates,
             normalized_required_locations,
             normalized_required_horizons,
         ) = _stringify_challenge_facets(
-            required_target_end_dates=required_target_end_dates,
+            required_reference_dates=required_reference_dates,
             required_locations=required_locations,
             required_horizons=required_horizons,
         )
@@ -382,7 +442,7 @@ def extract_model_data_details(
                     df=df,
                     model_name=model,
                     csv_name=csv_path.name,
-                    normalized_required_dates=normalized_required_dates,
+                    normalized_required_reference_dates=normalized_required_reference_dates,
                     normalized_required_locations=normalized_required_locations,
                     normalized_required_horizons=normalized_required_horizons,
                 )
@@ -390,7 +450,7 @@ def extract_model_data_details(
                     excluded_due_to_challenge_facets.append(csv_path.name)
                     logger.info(
                         f"Model {model} CSV data file {csv_path.name} has no rows remaining "
-                        "after filtering to the target_end_date, location, and horizon "
+                        "after filtering to the reference_date, location, and horizon "
                         "facets required by the library challenge. Excluding it from scoring."
                     )
                     continue
@@ -461,7 +521,7 @@ def extract_model_data_details(
         if excluded_due_to_challenge_facets:
             logger.info(
                 "Excluded %s file(s) for model %s because they had no rows matching "
-                "the library challenge target_end_date/location/horizon facets: %s",
+                "the library challenge reference_date/location/horizon facets: %s",
                 len(excluded_due_to_challenge_facets),
                 model,
                 ", ".join(excluded_due_to_challenge_facets),
@@ -473,7 +533,7 @@ def extract_model_data_details(
             _validate_required_challenge_grid(
                 df=concatenated_df,
                 model_name=model,
-                normalized_required_dates=normalized_required_dates,
+                normalized_required_reference_dates=normalized_required_reference_dates,
                 normalized_required_locations=normalized_required_locations,
                 normalized_required_horizons=normalized_required_horizons,
             )
@@ -490,7 +550,10 @@ def extract_model_data_details(
             eval_start_date=eval_start_date,
             eval_end_date=eval_end_date,
             target=target,
-            locations=locations_list
+            locations=locations_list,
+            required_reference_dates=required_reference_dates,
+            required_locations=required_locations,
+            required_horizons=required_horizons,
         )
         model_dict[extra_model] = df
     

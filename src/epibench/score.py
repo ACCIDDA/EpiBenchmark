@@ -181,10 +181,15 @@ def _score_from_challenge_library(
     # set target
     target = str(challenge_definition["target"])
 
-    # set eval start and end
-    challenge_target_end_dates = challenge_definition.get("target_end_dates", [])
-    evaluation_start_date = pd.to_datetime(min(challenge_target_end_dates))
-    evaluation_end_date = pd.to_datetime(max(challenge_target_end_dates))
+    # derive eval window (first ref date minus lowest horizon, last ref date plus highest horizon)
+    challenge_reference_dates = challenge_definition.get("reference_dates")
+    reference_date_series = pd.to_datetime(challenge_reference_dates)
+    horizon_offsets = [
+        pd.to_timedelta(int(horizon), unit="W")
+        for horizon in challenge_definition["horizons"]
+    ]
+    evaluation_start_date = min(reference_date_series + min(horizon_offsets))
+    evaluation_end_date = max(reference_date_series + max(horizon_offsets))
 
     # ensure hub clone
     hub_path = hub_clone_setup(hub_url=challenge_definition["hub_path"])
@@ -193,6 +198,7 @@ def _score_from_challenge_library(
     baseline_model = challenge_definition["baseline_model"]
     include_models = [baseline_model]
 
+    # validate input model data
     logger.info("Validating model data...")
     model_dict, locations_list = extract_model_data_details(
         hub_path=hub_path,
@@ -201,14 +207,16 @@ def _score_from_challenge_library(
         eval_start_date=evaluation_start_date,
         eval_end_date=evaluation_end_date,
         target=target,
-        required_target_end_dates=challenge_definition["target_end_dates"],
+        required_reference_dates=challenge_reference_dates,
         required_locations=challenge_definition["locations"],
         required_horizons=challenge_definition["horizons"],
     )
 
+    # validate quantiles
     logger.info("Validating quantile structure...")
     validate_for_scoring_library_challenge_quantiles(model_dict, quantiles)
 
+    # fetch (unvintaged) gt data for scoring
     logger.info("Retrieving and formatting ground truth data...")
     gto = ScoringGroundTruth(
         hub_path=hub_path,
@@ -223,14 +231,14 @@ def _score_from_challenge_library(
         columns=["target"]
     )
 
+    # score and save scoring file
     logger.info("Scoring model data...")
     scorer = ScoringBridge(baseline_model=baseline_model)
     scores = scorer.score_forecasts(df)
-
     score_output_path = _write_output_csv("scores", scores, output_dir)
     logger.info(f"Output scoring file at {score_output_path}")
 
-    # build scorecard using custom function registry
+    # build scorecard using custom function registry (and save)
     scorecard_results = custom_scorecard(
         model_name=model_name,
         scorecard_function_names=challenge_definition["scorecard_function"],
