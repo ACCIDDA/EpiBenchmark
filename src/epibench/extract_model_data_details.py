@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 import pandas as pd
 from hubdata import connect_hub
 
-from .horizon_utils import sort_horizon_strings
+from .horizon_utils import normalize_horizon_strings, sort_horizon_strings
 from .scoring_summary import record_filtered_facets
 
 REQUIRED_MODEL_DATA_COLUMNS = ['reference_date', 'target', 'horizon', 'target_end_date', 'location', 'output_type', 'output_type_id', 'value']
@@ -34,7 +34,7 @@ def _stringify_challenge_facets(
         for reference_date in required_reference_dates
     }
     normalized_required_locations = {str(location) for location in required_locations}
-    normalized_required_horizons = {str(horizon) for horizon in required_horizons}
+    normalized_required_horizons = set(normalize_horizon_strings(required_horizons))
     return (
         normalized_required_reference_dates,
         normalized_required_locations,
@@ -218,7 +218,6 @@ def _extra_models(
             f"for target '{target}' between dates {eval_start_date.date()} and {eval_end_date.date()}. "
             f"Searched for locations found in provided model data: {locations}"
         )
-
     # Match the user CSV path by normalizing challenge facet columns to strings.
     df = df.astype(
         {
@@ -227,6 +226,7 @@ def _extra_models(
             "location": str,
         }
     )
+    df["horizon"] = normalize_horizon_strings(df["horizon"])
 
     strict_grid_validation_enabled = all(
         value is not None
@@ -368,6 +368,7 @@ def extract_model_data_details(
                 'output_type': str
                 }
             )
+            df["horizon"] = normalize_horizon_strings(df["horizon"])
 
             # drop all other columns (we don't use them in this package)
             to_drop = [col for col in df.columns if col not in REQUIRED_MODEL_DATA_COLUMNS]
