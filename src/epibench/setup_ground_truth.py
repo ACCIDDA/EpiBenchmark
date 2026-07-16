@@ -207,12 +207,12 @@ def hub_clone_setup(hub_url: str) -> Path:
     if hub_path.exists() and hub_path.is_dir():
         logger.info(f"Updating existing hub repository: {repo_name}")
         subprocess.run(['git', 'pull'], cwd=hub_path, check=True)
-        logger.info("Hub updated successfully.")
+        logger.info("Hub updated successfully ✅")
     else:
         logger.info(f"Cloning hub repository into {hubs_dir}")
         hubs_dir.mkdir(parents=True, exist_ok=True)
         subprocess.run(['git', 'clone', hub_url], cwd=hubs_dir, check=True)
-        logger.info("Hub cloned successfully.")
+        logger.info("Hub cloned successfully ✅")
 
     return hub_path 
 

@@ -2,9 +2,12 @@
 
 import logging
 from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import pandas as pd
 from hubdata import connect_hub
+
+from .scoring_summary import record_filtered_facets
 
 REQUIRED_MODEL_DATA_COLUMNS = ['reference_date', 'target', 'horizon', 'target_end_date', 'location', 'output_type', 'output_type_id', 'value']
 MODEL_DATA_STRING_COLUMNS = {
@@ -19,7 +22,7 @@ MODEL_DATA_STRING_COLUMNS = {
 logger = logging.getLogger(__name__)
 
 
-def _sort_horizon_strings(horizons: set[str] | list[str]) -> list[str]:
+def _sort_horizon_strings(horizons: Union[Set[str], List[str]]) -> List[str]:
     """
     Sort horizons numerically.
     Useful helper b/c we keep horizons as strs.
@@ -37,10 +40,10 @@ def _sort_horizon_strings(horizons: set[str] | list[str]) -> list[str]:
 
 
 def _stringify_challenge_facets(
-        required_reference_dates: list[str],
-        required_locations: list[str],
-        required_horizons: list[str],
-    ) -> tuple[set[str], set[str], set[str]]:
+        required_reference_dates: List[str],
+        required_locations: List[str],
+        required_horizons: List[str],
+    ) -> Tuple[Set[str], Set[str], Set[str]]:
     """Normalize library challenge facets into comparable string sets."""
     normalized_required_reference_dates = {
         pd.Timestamp(reference_date).strftime("%Y-%m-%d")
@@ -59,13 +62,14 @@ def _filter_to_required_challenge_facets(
         df: pd.DataFrame,
         model_name: str,
         csv_name: str,
-        normalized_required_reference_dates: set[str],
-        normalized_required_locations: set[str],
-        normalized_required_horizons: set[str],
+        normalized_required_reference_dates: Set[str],
+        normalized_required_locations: Set[str],
+        normalized_required_horizons: Set[str],
+        filtered_facets_by_file: Optional[Dict[str, Set[str]]] = None,
     ) -> pd.DataFrame:
     """
     Given reference_dates, locations, and horizons lists specified in the library challenge,
-    filter out any excess values found and log this to user. Silent if no excess found.
+    filter out any excess values found and record them for summary output.
     """
 
     # normalize everything to be a string, build masks to filter with
@@ -106,28 +110,17 @@ def _filter_to_required_challenge_facets(
             )
         )
 
-        exclusion_reasons = []
+        filtered_facet_names = []
         if excluded_reference_dates:
-            exclusion_reasons.append(
-                f"reference_dates [{', '.join(excluded_reference_dates)}]"
-            )
+            filtered_facet_names.append("reference_date")
         if excluded_locations:
-            exclusion_reasons.append(
-                f"locations [{', '.join(excluded_locations)}]"
-            )
+            filtered_facet_names.append("location")
         if excluded_horizons:
-            exclusion_reasons.append(
-                f"horizons [{', '.join(excluded_horizons)}]"
-            )
-
-        # log message to user
-        logger.info(
-            "Excluded %s row(s) from model %s CSV %s because they are not part "
-            "of the library challenge facets: %s.",
-            len(excluded_df),
-            model_name,
-            csv_name,
-            "; ".join(exclusion_reasons),
+            filtered_facet_names.append("horizon")
+        record_filtered_facets(
+            filtered_facets_by_file=filtered_facets_by_file,
+            input_file=csv_name,
+            facets=filtered_facet_names,
         )
 
     return df.loc[keep_mask].copy()
@@ -136,9 +129,9 @@ def _filter_to_required_challenge_facets(
 def _validate_required_challenge_grid(
         df: pd.DataFrame,
         model_name: str,
-        normalized_required_reference_dates: set[str],
-        normalized_required_locations: set[str],
-        normalized_required_horizons: set[str],
+        normalized_required_reference_dates: Set[str],
+        normalized_required_locations: Set[str],
+        normalized_required_horizons: Set[str],
     ) -> None:
     """
     Ensure all required challenge forecast units exist.
@@ -209,10 +202,10 @@ def _extra_models(
         eval_start_date: str,
         eval_end_date: str,
         target: str,
-        locations: list[str],
-        required_reference_dates: list[str] | None = None,
-        required_locations: list[str] | None = None,
-        required_horizons: list[str] | None = None,
+        locations: List[str],
+        required_reference_dates: Optional[List[str]] = None,
+        required_locations: Optional[List[str]] = None,
+        required_horizons: Optional[List[str]] = None,
     ) -> pd.DataFrame:
     """
     write
@@ -291,10 +284,12 @@ def extract_model_data_details(
         eval_start_date: str, 
         eval_end_date: str, 
         target: str,
-        required_reference_dates: list[str] | None = None,
-        required_locations: list[str] | None = None,
-        required_horizons: list[str] | None = None,
-    ) -> tuple[dict[str, pd.DataFrame], list[str]]:
+        required_reference_dates: Optional[List[str]] = None,
+        required_locations: Optional[List[str]] = None,
+        required_horizons: Optional[List[str]] = None,
+        filtered_facets_by_file: Optional[Dict[str, Set[str]]] = None,
+        excluded_files: Optional[Set[str]] = None,
+    ) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
     """
     Iteratively pre-process model data; run more checks
 
@@ -339,9 +334,9 @@ def extract_model_data_details(
             required_horizons,
         )
     )
-    normalized_required_reference_dates: set[str] = set()
-    normalized_required_locations: set[str] = set()
-    normalized_required_horizons: set[str] = set()
+    normalized_required_reference_dates = set()  # type: Set[str]
+    normalized_required_locations = set()  # type: Set[str]
+    normalized_required_horizons = set()  # type: Set[str]
     if strict_grid_validation_enabled:
         (
             normalized_required_reference_dates,
@@ -363,11 +358,17 @@ def extract_model_data_details(
         excluded_due_to_target = []
         excluded_due_to_challenge_facets = []
         for csv_path in model_info[model]:
+            record_filtered_facets(
+                filtered_facets_by_file=filtered_facets_by_file,
+                input_file=csv_path.name,
+                facets=[],
+            )
 
             # read in as pd.DataFrame, ensure non-empty
             df = pd.read_csv(csv_path, dtype=MODEL_DATA_STRING_COLUMNS)
             if df.empty:
-                logger.warning(f"Model {model} CSV data file {csv_path.name} is an empty file. Skipping to next CSV.")
+                if excluded_files is not None:
+                    excluded_files.add(csv_path.name)
                 continue # skip to next if empty (non-fatal)
 
             # check for required columns
@@ -390,42 +391,39 @@ def extract_model_data_details(
 
             # add column for model name (`model`)
             df['model'] = model 
+            df["_source_file"] = csv_path.name
 
             # keep only the requested target and report any others being excluded
             current_model_targets = set(df["target"])
             excluded_targets = sorted(current_model_targets - {target})
             if excluded_targets:
-                logger.info(
-                    "Model %s CSV data file %s contains target(s) [%s] in addition "
-                    "to the requested target [%s]. Rows for the extra target(s) will "
-                    "be excluded from scoring.",
-                    model,
-                    csv_path.name,
-                    ", ".join(excluded_targets),
-                    target,
+                record_filtered_facets(
+                    filtered_facets_by_file=filtered_facets_by_file,
+                    input_file=csv_path.name,
+                    facets=["target"],
                 )
             df = df[df["target"] == target].copy()
             if df.empty:
                 excluded_due_to_target.append(csv_path.name)
-                logger.info(
-                    "Model %s CSV data file %s does not contain the requested target "
-                    "[%s]. Excluding it from scoring.",
-                    model,
-                    csv_path.name,
-                    target,
-                )
+                if excluded_files is not None:
+                    excluded_files.add(csv_path.name)
                 continue
             
             # filter entries s.t. target_end_date only spans the eval start/end date 
             df['target_end_date'] = pd.to_datetime(df['target_end_date'])
-            df = df[df['target_end_date'].between(eval_start_date, eval_end_date)]
+            if not df.empty:
+                in_eval_range_mask = df['target_end_date'].between(eval_start_date, eval_end_date)
+                if (~in_eval_range_mask).any():
+                    record_filtered_facets(
+                        filtered_facets_by_file=filtered_facets_by_file,
+                        input_file=csv_path.name,
+                        facets=["target_end_date"],
+                    )
+                df = df[in_eval_range_mask]
             if df.empty:
                 excluded_due_to_eval_range.append(csv_path.name)
-                logger.info(
-                    f"Model {model} CSV data file {csv_path.name} has no target_end_date values "
-                    f"between eval start date {eval_start_date} and eval end date {eval_end_date}. "
-                    "Excluding it from scoring."
-                )
+                if excluded_files is not None:
+                    excluded_files.add(csv_path.name)
                 continue
 
             # filter out only output_type == quantile
@@ -437,7 +435,6 @@ def extract_model_data_details(
             # do strict processing if it is a library challenge run 
             # i.e., force every forecast unit combination to be present
             if strict_grid_validation_enabled:
-                pre_filter_row_count = len(df)
                 df = _filter_to_required_challenge_facets(
                     df=df,
                     model_name=model,
@@ -445,25 +442,13 @@ def extract_model_data_details(
                     normalized_required_reference_dates=normalized_required_reference_dates,
                     normalized_required_locations=normalized_required_locations,
                     normalized_required_horizons=normalized_required_horizons,
+                    filtered_facets_by_file=filtered_facets_by_file,
                 )
                 if df.empty:
                     excluded_due_to_challenge_facets.append(csv_path.name)
-                    logger.info(
-                        f"Model {model} CSV data file {csv_path.name} has no rows remaining "
-                        "after filtering to the reference_date, location, and horizon "
-                        "facets required by the library challenge. Excluding it from scoring."
-                    )
+                    if excluded_files is not None:
+                        excluded_files.add(csv_path.name)
                     continue
-                if len(df) < pre_filter_row_count:
-                    logger.info(
-                        "Model %s CSV data file %s retained %s of %s row(s) after "
-                        "library challenge facet filtering.",
-                        model,
-                        csv_path.name,
-                        len(df),
-                        pre_filter_row_count,
-                    )
-
             # properly rename the columns that need to be renamed (moving into scoringutils conventions)
             df = df.rename(columns={'output_type_id': 'quantile_level', 'value': 'predicted'})
 
@@ -502,31 +487,6 @@ def extract_model_data_details(
                     f"{excluded_challenge_facet_files_msg}"
                 )
         
-        # gracefully inform users of any data that has been excluded 
-        if excluded_due_to_target:
-            logger.info(
-                "Excluded %s file(s) for model %s because they did not contain "
-                "the requested target [%s]: %s",
-                len(excluded_due_to_target),
-                model,
-                target,
-                ", ".join(excluded_due_to_target),
-            )
-        if excluded_due_to_eval_range:
-            logger.info(
-                f"Excluded {len(excluded_due_to_eval_range)} file(s) for model {model} because "
-                f"they had no target_end_date values in the evaluation range: "
-                f"{', '.join(excluded_due_to_eval_range)}"
-            )
-        if excluded_due_to_challenge_facets:
-            logger.info(
-                "Excluded %s file(s) for model %s because they had no rows matching "
-                "the library challenge reference_date/location/horizon facets: %s",
-                len(excluded_due_to_challenge_facets),
-                model,
-                ", ".join(excluded_due_to_challenge_facets),
-            )
-
         # concatenate all dfs in processed_dfs for one model
         concatenated_df = pd.concat(processed_dfs, ignore_index=True)
         if strict_grid_validation_enabled:

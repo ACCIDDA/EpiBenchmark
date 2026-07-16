@@ -1,8 +1,11 @@
 """Validation helpers for forecast quantile inputs used in scoring."""
 
 import logging
+from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
+
+from .scoring_summary import record_filtered_facets
 
 # 1 forecast unit = 1 unique combination of model, target_end_date, reference_date, location, horizon 
 FORECAST_UNIT_COLUMNS = [
@@ -16,7 +19,11 @@ QUANTILE_ROUNDING_DIGITS = 10
 logger = logging.getLogger(__name__)
 
 
-def validate_for_scoring_library_challenge_quantiles(model_dict: dict[str, pd.DataFrame], quantiles: list[float]) -> None:
+def validate_for_scoring_library_challenge_quantiles(
+    model_dict: Dict[str, pd.DataFrame],
+    quantiles: List[float],
+    filtered_facets_by_file: Optional[Dict[str, Set[str]]] = None,
+) -> None:
     """
     Validate quantile data for challenge-library scoring.
 
@@ -66,6 +73,7 @@ def validate_for_scoring_library_challenge_quantiles(model_dict: dict[str, pd.Da
         )
 
         extra_quantiles_found = set()
+        files_with_extra_quantiles = set()
 
         for _, group in normalized.groupby(FORECAST_UNIT_COLUMNS, sort=False):
             group = group.sort_values("quantile_level")
@@ -101,16 +109,15 @@ def validate_for_scoring_library_challenge_quantiles(model_dict: dict[str, pd.Da
                 set(unique_quantile_levels) - set(required_quantiles)
             )
             extra_quantiles_found.update(extra_quantiles)
-        # non-fatal warning for extra quantiles being filtered out 
+            if extra_quantiles and "_source_file" in group.columns:
+                files_with_extra_quantiles.update(group["_source_file"].dropna().unique())
         if extra_quantiles_found:
-            logger.info(
-                "Model %s contains extra quantiles [%s] beyond the required "
-                "challenge quantiles [%s]. These extra quantile rows will be excluded "
-                "from scoring.",
-                model_name,
-                ", ".join(f"{quantile_level:g}" for quantile_level in sorted(extra_quantiles_found)),
-                ", ".join(f"{quantile_level:g}" for quantile_level in required_quantiles),
-            )
+            for input_file in sorted(files_with_extra_quantiles):
+                record_filtered_facets(
+                    filtered_facets_by_file=filtered_facets_by_file,
+                    input_file=str(input_file),
+                    facets=["quantile"],
+                )
 
         model_dict[model_name] = normalized[
             normalized["quantile_level"].isin(required_quantiles)
@@ -118,7 +125,7 @@ def validate_for_scoring_library_challenge_quantiles(model_dict: dict[str, pd.Da
     logger.info("Success ✅")
 
 
-def validate_for_scoring_config_quantiles(model_dict: dict[str, pd.DataFrame]) -> None:
+def validate_for_scoring_config_quantiles(model_dict: Dict[str, pd.DataFrame]) -> None:
     """
     Validate quantile data from user-supplied model data (specified via config).
 
@@ -137,8 +144,8 @@ def validate_for_scoring_config_quantiles(model_dict: dict[str, pd.DataFrame]) -
     """
     minimum_safe_scoring_grid = (0.05, 0.25, 0.5, 0.75, 0.95)
 
-    expected_quantile_grid: tuple[float, ...] | None = None
-    expected_grid_model: str | None = None
+    expected_quantile_grid = None  # type: Optional[Tuple[float, ...]]
+    expected_grid_model = None  # type: Optional[str]
 
     # iterate over every model in the model_dict
     for model_name, forecast_df in model_dict.items():
@@ -171,7 +178,7 @@ def validate_for_scoring_config_quantiles(model_dict: dict[str, pd.DataFrame]) -
         )
 
         # build forecast units (unique combinations of model, target_end_date, location, horizon)
-        model_quantile_grid: tuple[float, ...] | None = None
+        model_quantile_grid = None  # type: Optional[Tuple[float, ...]]
         for _, group in normalized.groupby(FORECAST_UNIT_COLUMNS, sort=False):
             group = group.sort_values("quantile_level") # using scoringutil column naming
             forecast_unit_row = group.iloc[0]

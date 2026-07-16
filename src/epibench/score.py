@@ -4,7 +4,7 @@ import json
 import logging
 from importlib import resources
 from pathlib import Path
-from typing import Literal
+from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
 import click
 import pandas as pd
@@ -18,6 +18,7 @@ from .quantile_validation import (
     validate_for_scoring_config_quantiles,
     validate_for_scoring_library_challenge_quantiles,
 )
+from .scoring_summary import write_excluded_files_summary
 from .scorecard_functions import custom_scorecard
 from .scoring_bridge import ScoringBridge
 
@@ -28,7 +29,7 @@ SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash, s
 SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash, should be challenge-name
 
 
-def _load_library_challenge(challenge_name: str) -> dict[str, object]:
+def _load_library_challenge(challenge_name: str) -> Dict[str, object]:
     """Load one EpiBenchmark library challenge from the challenges-library directory."""
     challenges_dir = resources.files("epibench").joinpath("challenges-library")
     requested_name = Path(challenge_name).stem
@@ -53,7 +54,7 @@ def _load_library_challenge(challenge_name: str) -> dict[str, object]:
 
 def _write_output_csv(
     output_kind: Literal["scores", "scorecard"],
-    output_data: pd.DataFrame | dict[str, object],
+    output_data: Union[pd.DataFrame, Dict[str, object]],
     output_dir: Path,
 ) -> Path:
     """
@@ -87,7 +88,7 @@ def _write_output_csv(
 def _resolve_model_info(
     model_data_path: str,
     model_name: str,
-) -> tuple[str, dict[str, list[Path]], Path]:
+) -> Tuple[str, Dict[str, List[Path]], Path]:
     """Normalize a library-route model path into the model_info shape used by scoring."""
     resolved_model_data_path = resolve_path(model_data_path)
     # fail if it does not exist
@@ -125,6 +126,7 @@ def _score_from_config(config_path: str) -> None:
     config_object = Config(config_path=config_path, pipeline="score")
 
     logger.info("Validating model data...")
+    excluded_files = set()  # type: Set[str]
     model_dict, locations_list = extract_model_data_details(
         hub_path=config_object.hub_path,
         model_info=config_object.model_info,
@@ -132,6 +134,7 @@ def _score_from_config(config_path: str) -> None:
         eval_start_date=config_object.evaluation_start_date,
         eval_end_date=config_object.evaluation_end_date,
         target=config_object.target,
+        excluded_files=excluded_files,
     )
 
     logger.info("Validating quantile structure...")
@@ -156,8 +159,19 @@ def _score_from_config(config_path: str) -> None:
     scores = scorer.score_forecasts(df)
 
     full_output_path = _write_output_csv("scores", scores, config_object.output_path)
+    write_excluded_files_summary(
+        excluded_files=excluded_files,
+        target=config_object.target,
+        output_dir=config_object.output_path,
+        target_end_dates=pd.date_range(
+            config_object.evaluation_start_date,
+            config_object.evaluation_end_date,
+            freq="D",
+        ).strftime("%Y-%m-%d").tolist(),
+    )
     logger.info("Process executed successfully to end 🎉.")
     logger.info(f"Output file at {full_output_path}")
+    logger.info("See summary.txt for information on your model data.")
 
 
 def _score_from_challenge_library(
@@ -200,6 +214,8 @@ def _score_from_challenge_library(
 
     # validate input model data
     logger.info("Validating model data...")
+    filtered_facets_by_file = {}  # type: Dict[str, Set[str]]
+    excluded_files = set()  # type: Set[str]
     model_dict, locations_list = extract_model_data_details(
         hub_path=hub_path,
         model_info=model_info,
@@ -210,11 +226,29 @@ def _score_from_challenge_library(
         required_reference_dates=challenge_reference_dates,
         required_locations=challenge_definition["locations"],
         required_horizons=challenge_definition["horizons"],
+        filtered_facets_by_file=filtered_facets_by_file,
+        excluded_files=excluded_files,
     )
 
     # validate quantiles
     logger.info("Validating quantile structure...")
-    validate_for_scoring_library_challenge_quantiles(model_dict, quantiles)
+    validate_for_scoring_library_challenge_quantiles(
+        model_dict,
+        quantiles,
+        filtered_facets_by_file=filtered_facets_by_file,
+    )
+    write_excluded_files_summary(
+        excluded_files=excluded_files,
+        target=target,
+        reference_dates=challenge_reference_dates,
+        quantiles=quantiles,
+        locations=challenge_definition["locations"],
+        output_dir=output_dir,
+    )
+
+    for model_name_key, forecast_df in model_dict.items():
+        if "_source_file" in forecast_df.columns:
+            model_dict[model_name_key] = forecast_df.drop(columns=["_source_file"])
 
     # fetch (unvintaged) gt data for scoring
     logger.info("Retrieving and formatting ground truth data...")
@@ -235,8 +269,7 @@ def _score_from_challenge_library(
     logger.info("Scoring model data...")
     scorer = ScoringBridge(baseline_model=baseline_model)
     scores = scorer.score_forecasts(df)
-    score_output_path = _write_output_csv("scores", scores, output_dir)
-    logger.info(f"Output scoring file at {score_output_path}")
+    _write_output_csv("scores", scores, output_dir)
 
     # build scorecard using custom function registry (and save)
     scorecard_results = custom_scorecard(
@@ -244,16 +277,17 @@ def _score_from_challenge_library(
         scorecard_function_names=challenge_definition["scorecard_function"],
         score_file=scores,
     )
-    scorecard_output_path = _write_output_csv("scorecard", scorecard_results, output_dir)
-    logger.info(f"Scorecard output file at {scorecard_output_path}")
+    _write_output_csv("scorecard", scorecard_results, output_dir)
+    logger.info(f"Find output at {output_dir}")
+    logger.info("See summary.txt for information on your model data.")
 
 
 def score(
-    challenge_name: str | None = None,
-    model_data_path: str | None = None,
-    model_name: str | None = None,
-    output_path: str | None = None,
-    config_path: str | None = None,
+    challenge_name: Optional[str] = None,
+    model_data_path: Optional[str] = None,
+    model_name: Optional[str] = None,
+    output_path: Optional[str] = None,
+    config_path: Optional[str] = None,
 ) -> None:
     """
     Main execution function for the `epibench score` pipeline.
@@ -261,7 +295,6 @@ def score(
     using_library_challenge = challenge_name is not None or model_data_path is not None
     using_config = config_path is not None
 
-    logger.info("Validating score inputs...")
     # fail if both --model-data-path and --config-path are provided
     if using_library_challenge and using_config:
         raise click.UsageError("Use either a library challenge with --model-data-path or --config-path, not both.")
