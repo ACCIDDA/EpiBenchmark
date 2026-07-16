@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 import pandas as pd
 from hubdata import connect_hub
 
+from .horizon_utils import sort_horizon_strings
 from .scoring_summary import record_filtered_facets
 
 REQUIRED_MODEL_DATA_COLUMNS = ['reference_date', 'target', 'horizon', 'target_end_date', 'location', 'output_type', 'output_type_id', 'value']
@@ -20,23 +21,6 @@ MODEL_DATA_STRING_COLUMNS = {
     "output_type_id": str,
 }
 logger = logging.getLogger(__name__)
-
-
-def _sort_horizon_strings(horizons: Union[Set[str], List[str]]) -> List[str]:
-    """
-    Sort horizons numerically.
-    Useful helper b/c we keep horizons as strs.
-    """
-    return sorted(
-        {str(horizon) for horizon in horizons},
-        key=lambda horizon: (
-            0,
-            int(horizon),
-        ) if str(horizon).isdigit() else (
-            1,
-            str(horizon),
-        ),
-    )
 
 
 def _stringify_challenge_facets(
@@ -101,7 +85,7 @@ def _filter_to_required_challenge_facets(
                 ]
             )
         )
-        excluded_horizons = _sort_horizon_strings(
+        excluded_horizons = sort_horizon_strings(
             set(
                 excluded_df.loc[
                     ~excluded_df["horizon"].isin(normalized_required_horizons),
@@ -139,7 +123,7 @@ def _validate_required_challenge_grid(
     For library challenges, a required forecast unit is the required
     combination of reference_date, location, and horizon.
     """
-    sorted_required_horizons = _sort_horizon_strings(normalized_required_horizons)
+    sorted_required_horizons = sort_horizon_strings(normalized_required_horizons)
     expected_rows = []
     for reference_date in sorted(normalized_required_reference_dates):
         for location in sorted(normalized_required_locations):
@@ -176,7 +160,7 @@ def _validate_required_challenge_grid(
             grouped = (
                 missing_df.groupby(["reference_date", "location"])["horizon"]
                 .agg(
-                    lambda horizons: _sort_horizon_strings(list(horizons))
+                    lambda horizons: sort_horizon_strings(list(horizons))
                 )
                 .reset_index()
             )

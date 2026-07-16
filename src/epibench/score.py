@@ -10,10 +10,7 @@ import click
 import pandas as pd
 
 from .config import Config
-from .extract_model_data_details import (
-    _sort_horizon_strings,
-    extract_model_data_details,
-)
+from .extract_model_data_details import extract_model_data_details
 from .scoring_ground_truth import ScoringGroundTruth
 from .setup_ground_truth import hub_clone_setup
 from .path_utils import resolve_output_dir, resolve_path
@@ -22,6 +19,7 @@ from .quantile_validation import (
     validate_for_scoring_library_challenge_quantiles,
 )
 from .scoring_summary import (
+    build_config_missing_forecast_units_summary,
     format_missing_forecast_units_warning,
     write_excluded_files_summary,
 )
@@ -33,103 +31,6 @@ logger = logging.getLogger(__name__)
 
 SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash, shoudl be challenge-name
 SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash, should be challenge-name
-
-
-def _build_config_missing_forecast_units_summary(
-    submitted_model_dict: Dict[str, pd.DataFrame],
-) -> Optional[Dict[str, object]]:
-    """Compare submitted models and describe missing forecast units or quantiles."""
-
-    def _normalize_date_strings(date_series: pd.Series) -> pd.Series:
-        return pd.to_datetime(date_series, errors="raise").dt.strftime("%Y-%m-%d")
-
-    def _sort_unit(unit: Tuple[str, str, str, str]) -> Tuple[str, str, str, Tuple[int, object]]:
-        horizon = str(unit[3])
-        horizon_sort = (0, int(horizon)) if horizon.isdigit() else (1, horizon)
-        return (unit[0], unit[1], unit[2], horizon_sort)
-
-    def _sort_quantile_level(quantile_level: float) -> float:
-        return float(quantile_level)
-
-    per_model_units = {}
-    per_model_quantiles = {}
-    global_units = set()
-    global_quantiles = set()
-    global_locations = set()
-    global_horizons = set()
-    global_reference_dates = set()
-    global_target_end_dates = set()
-
-    for model_name, forecast_df in submitted_model_dict.items():
-        normalized = forecast_df.copy()
-        normalized["reference_date"] = _normalize_date_strings(normalized["reference_date"])
-        normalized["target_end_date"] = _normalize_date_strings(normalized["target_end_date"])
-        unit_rows = normalized[
-            ["reference_date", "target_end_date", "location", "horizon"]
-        ].drop_duplicates()
-        unit_set = {
-            tuple(unit_row)
-            for unit_row in unit_rows.itertuples(index=False, name=None)
-        }
-        quantile_set = {
-            round(float(quantile_level), 10)
-            for quantile_level in pd.to_numeric(
-                normalized["quantile_level"],
-                errors="raise",
-            )
-        }
-        per_model_units[model_name] = unit_set
-        per_model_quantiles[model_name] = quantile_set
-        global_units.update(unit_set)
-        global_quantiles.update(quantile_set)
-        global_locations.update(unit_rows["location"])
-        global_horizons.update(unit_rows["horizon"])
-        global_reference_dates.update(unit_rows["reference_date"])
-        global_target_end_dates.update(unit_rows["target_end_date"])
-
-    model_summaries = []
-    for model_name in sorted(per_model_units):
-        missing_units = sorted(global_units - per_model_units[model_name], key=_sort_unit)
-        missing_quantiles = sorted(
-            global_quantiles - per_model_quantiles[model_name],
-            key=_sort_quantile_level,
-        )
-        if not missing_units and not missing_quantiles:
-            continue
-        model_summaries.append(
-            {
-                "model_name": model_name,
-                "missing_units": [
-                    {
-                        "reference_date": missing_unit[0],
-                        "target_end_date": missing_unit[1],
-                        "location": missing_unit[2],
-                        "horizon": missing_unit[3],
-                    }
-                    for missing_unit in missing_units
-                ],
-                "missing_quantiles": [
-                    f"{missing_quantile:g}"
-                    for missing_quantile in missing_quantiles
-                ],
-            }
-        )
-
-    if not model_summaries:
-        return None
-
-    return {
-        "locations": sorted(str(location) for location in global_locations),
-        "horizons": _sort_horizon_strings({str(horizon) for horizon in global_horizons}),
-        "reference_dates": sorted(str(reference_date) for reference_date in global_reference_dates),
-        "target_end_dates": sorted(str(target_end_date) for target_end_date in global_target_end_dates),
-        "quantiles": [
-            f"{quantile_level:g}"
-            for quantile_level in sorted(global_quantiles, key=_sort_quantile_level)
-        ],
-        "models": model_summaries,
-    }
-
 
 def _load_library_challenge(challenge_name: str) -> Dict[str, object]:
     """Load one EpiBenchmark library challenge from the challenges-library directory."""
@@ -246,7 +147,7 @@ def _score_from_config(config_path: str) -> None:
         for model_name in config_object.model_info
         if model_name in model_dict
     }
-    missing_forecast_units_summary = _build_config_missing_forecast_units_summary(
+    missing_forecast_units_summary = build_config_missing_forecast_units_summary(
         submitted_model_dict
     )
     missing_forecast_units_warning = format_missing_forecast_units_warning(
@@ -362,6 +263,7 @@ def _score_from_challenge_library(
         excluded_files=excluded_files,
         target=target,
         reference_dates=challenge_reference_dates,
+        horizons=challenge_definition["horizons"],
         quantiles=quantiles,
         locations=challenge_definition["locations"],
         output_dir=output_dir,
