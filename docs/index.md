@@ -24,7 +24,7 @@ EpiBenchmark is a thin layer on top of [Hubverse](https://hubverse.io/). Hubvers
 
 ## EpiBenchmark in practice
 
-EpiBench exposes three workflows:
+EpiBenchmark exposes three workflows:
 
 - facilitate model runs with vintaged ground truth data fetched and organized by the tool (`epibench setup`)
 - score model forecasts with a WIS (includes over prediction, under prediction, coverage, etc.) (`epibench score`)
@@ -34,17 +34,22 @@ EpiBench exposes three workflows:
 
 This project was made possible by the Insight Net cooperative agreement `CDC-RFA-FT-23-0069` from the CDC's Center for Forecasting and Outbreak Analytics. Its contents are solely the responsibility of the authors and do not necessarily represent the official views of the Centers for Disease Control and Prevention.
 
-EpiBench is being developed at UNC Chapel Hill through [ACCIDDA](https://www.accidda.org/), the Atlantic Coast Center for Infectious Disease Dynamics and Analytics.
+EpiBenchmark is being developed at UNC Chapel Hill through [ACCIDDA](https://www.accidda.org/), the Atlantic Coast Center for Infectious Disease Dynamics and Analytics.
 
 ## Get started!
+### Overview
+- [Overview](getting-started/overview.md) – understand the scope and usage of EpiBenchmark
 
-- [Installation](getting-started/installation.md) – install the EpiBench package
-- [Overview](getting-started/overview.md) – understand the scope and usage of EpiBench
+### Installation Guide
+- [Installation](getting-started/installation.md) – install the EpiBenchmark package
+
+### Installation_Longleaf Guide
+- [Installation_Longleaf](getting-started/installation_longleaf.md) - install the EpiBenchmark package on UNC Longleaf Cluster
 
 ## Attribution
 
-EpiBench relies on the [Hubverse](https://hubverse.io/) structure as a standard for data. Without the Hubverse and its associated tools, EpiBench would not be possible. The scoring component of EpiBench utilizes [scoringutils](https://epiforecasts.io/scoringutils/articles/scoringutils.html), a [CRAN](https://cran.r-project.org/web/packages/scoringutils/index.html) package that facillitates the evaluation of forecasts and is highly-compatible with the Hubverse structure. 
+EpiBenchmark relies on the [Hubverse](https://hubverse.io/) structure as a standard for data. Without the Hubverse and its associated tools, EpiBenchmark would not be possible. The scoring component of EpiBenchmark utilizes [scoringutils](https://epiforecasts.io/scoringutils/articles/scoringutils.html), a [CRAN](https://cran.r-project.org/web/packages/scoringutils/index.html) package that facillitates the evaluation of forecasts and is highly-compatible with the Hubverse structure. 
 
 ## Contact
 
-Have a question, comment, or suggestion? Get in touch with the developers by [raising an issue](https://github.com/ACCIDDA/EpiBench/issues/new) on the EpiBench repository.
+Have a question, comment, or suggestion? Get in touch with the developers by [raising an issue](https://github.com/ACCIDDA/EpiBenchmark/issues/new) on the EpiBenchmark repository.

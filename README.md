@@ -1,69 +1,121 @@
-# EpiBench
+# EpiBenchmark
 
-EpiBench is a work-in-progress benchmarking tool for disease forecasts. The package is still in development.
+EpiBench is a work-in-progress benchmarking tool for evaluating performance of infectious disease forecasting models. The package is still in development.
+
+## Choose the installation guide that matches your environment:
+- **Personal computer or standard Linux workstation (Windows/macOS/Linux):** Continue with the instructions below.
+- **High-performance computing (HPC) cluster:** See [`installation_longleaf`](https://accidda.github.io/EpiBenchmark/getting-started/installation_longleaf/).
+
+## Requirements
+- Python 3.10 or later
+- Git
+- R and the `scoringutils` package for the `epibench score` command
+
+## Quick Start
+```bash
+git clone https://github.com/ACCIDDA/EpiBenchmark.git
+cd EpiBenchmark
+uv sync
+uv run epibench --help
+```
 
 ## Installation
 
-We recommend using a project-local virtual environment so that `pip`, `python`,
-and `epibench` all come from the same interpreter.
-
-To begin installing EpiBench, clone the repository locally and run the following commands from the repository
-root.
+Clone the repository:
 
 ```bash
-python3.13 -m venv .venv
+git clone https://github.com/ACCIDDA/EpiBenchmark.git
+
+cd EpiBenchmark
+```
+
+EpiBenchmark supports installation using either **uv** (recommended) or **pip**.
+
+## Option 1: Install with uv
+
+This is the fastet installation method.
+
+```bash
+uv sync
+```
+
+### Activate the virtual environment
+
+### Windows
+
+```bash
+.venv\Scripts\activate
+```
+
+### macOS/Linux
+
+```bash
 source .venv/bin/activate
 ```
 
-If `.venv` already exists and was created with a different Python version,
-remove it and recreate it before installing:
+Alternatively, users can run commands without activating the virtual environment when using `uv`:
 
 ```bash
-rm -rf .venv
-python3.13 -m venv .venv
+uv run epibench --help
+```
+
+## Option 2: Install with pip
+
+Create a virtual environment.
+
+### Windows
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+### macOS/Linux
+
+```bash
+python -m venv .venv
 source .venv/bin/activate
+```
+
+Upgrade pip:
+
+```bash
 python -m pip install --upgrade pip
-python -m pip install -e .
 ```
 
-Install EpiBench from the repository root with:
+Install EpiBenchmark in editable mode:
 
 ```bash
 python -m pip install -e .
 ```
-This makes the `epibench` CLI available inside the active virtual environment.
 
-Full install flow:
+## Verify the Installation
 
-```bash
-python3.13 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e .
-```
-
-After setup, you can leave and re-enter the environment with:
+After installation, verify that the command-line interface is available:
 
 ```bash
-deactivate
-source .venv/bin/activate
+epibench
+epibench --help
+```
+Users can also verify the available subcommands:
+
+```bash
+epibench setup --help
+epibench score --help
+epibench plot --help
 ```
 
-## Scoring Requirements
+## R Requirements for Scoring
 
-The Python virtual environment only manages EpiBench's Python dependencies.
+The Python virtual environment only manages EpiBenchmark's Python dependencies.
 The `epibench score` command also calls `Rscript`, so scoring has two external
 requirements:
 
-- `Rscript` must be available on your `PATH`
+- `Rscript` must be available on users' `PATH`
 - the CRAN package `scoringutils` must be installed in the R library used by
   that `Rscript`
 
-This is compatible with the `venv` workflow above: you run `epibench` from the
-activated Python environment, and that Python process invokes the `Rscript`
-available on your machine.
-
-You can check that `Rscript` is available with:
+Check that `R` is available with:
 
 ```bash
 Rscript --version
@@ -82,41 +134,25 @@ Rscript -e 'library(scoringutils)'
 ```
 
 If `epibench score` reports that `Rscript` or `scoringutils` is missing, make
-sure they are installed in the same R environment used by your `Rscript`
+sure they are installed in the same R environment used by `Rscript`
 command.
 
-## Makefile Shortcuts
 
-You can also use the included `Makefile` to avoid typing the full setup and
-testing commands each time.
+## Remove the virtual environment
+Deletes the local `.venv` directory, allowing users to create a fresh virtual environment.
 
-Available commands:
-
-- `make venv`
-  Creates the project virtual environment.
-- `make install`
-  Creates the virtual environment if needed, upgrades `pip`, and installs
-  EpiBench in editable mode.
-- `make test-cli`
-  Runs a small CLI smoke test for:
-  - `epibench`
-  - `epibench --help`
-  - `epibench setup --help`
-  - `epibench score --help`
-  - `epibench plot --help`
-
-If your Python 3.13 executable has a different name, you can override it:
-
+### Windows
+If Command Prompt:
 ```bash
-make install PYTHON=python3.13
+rmdir /s /q .venv 
 ```
 
-After installation, test the CLI with:
-
+If PowerShell:
 ```bash
-epibench
-epibench --help
-epibench setup --help
-epibench score --help
-epibench plot --help
+Remove-Item -Recurse -Force .venv (PowerShell)
+```
+
+### macOS/Linux
+```bash
+rm -rf .venv
 ```

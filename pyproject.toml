@@ -1,13 +1,35 @@
-[build-system]
-requires = ["setuptools>=69", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "EpiBench"
+name = "EpiBenchmark"
 version = "0.0.1"
-description = "Benchmark tool to evaluate model performance"
+description = "A benchmarking tool for evaluating the performance of epidemiological models."
 readme = "README.md"
+authors = [
+    { name = "Joseph Lemaitre", email = "Joseph.Lemaitre@unc.edu"},
+    { name = "Emily Przykucki", email = "Emprzy@live.unc.edu"},
+    { name = "Yue Liu", email = "lyue@unc.edu"},
+]
+license = {text = "MIT"}
 requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
+keywords = [
+    "epidemiology",
+    "forecasting",
+    "modeling",
+    "scoring",
+    "public-health",
+    "time-series",
+]
 dependencies = [
     "click>=8.1",
     "numpy>=1.24,<2.2",
@@ -18,12 +40,27 @@ dependencies = [
     "matplotlib>=3.7"
 ]
 
+[dependency-groups]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25"
+]
+
 [project.optional-dependencies]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.25"
 ]
+
+[project.urls]
+Homepage = "https://github.com/ACCIDDA/EpiBenchmark"
+Documentation = "https://accidda.github.io/EpiBenchmark/"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

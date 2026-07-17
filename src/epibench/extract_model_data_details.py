@@ -202,6 +202,7 @@ def _extra_models(
         raise ConnectionError(
             f"Could not establish connection to hub {hub_path} to retrieve extra "
             f"model ({model_name}) data. Error: {e}"
+            
         )
     # filter for the things we need
     data_return['target_end_date'] = pd.to_datetime(data_return['target_end_date'])
@@ -335,7 +336,7 @@ def extract_model_data_details(
     global_locations_list = []
     model_dict = {}
     for model in model_info:
-
+        
         # pathway for their specified model data
         processed_dfs = [] # keep a model-level list of all dfs
         excluded_due_to_eval_range = []
@@ -443,7 +444,7 @@ def extract_model_data_details(
 
             # add to model-level list of dfs
             processed_dfs.append(df)
-
+        
         # ensure that there are ANY dfs in the list for that model
         if not processed_dfs:
                 excluded_files_msg = (
@@ -486,7 +487,7 @@ def extract_model_data_details(
         model_dict[model] = concatenated_df
 
     locations_list = list(set(global_locations_list))
-
+    
     # get extra model data
     for extra_model in include_models:
         df = _extra_models(
