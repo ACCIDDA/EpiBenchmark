@@ -75,7 +75,7 @@ which would result in an output folder created at `/Users/name/Desktop`, with th
 ```
 Desktop/
 └── HASH-GOES-HERE/
-    ├── challenges.csv 
+    ├── task_list.csv
     └── gt/ 
         ├── 2026-01-01/
         │   └── 20260101_gt.csv
@@ -91,6 +91,5 @@ Desktop/
 
 where:
 
-- `challenges.csv` is a table with two columns – `date` and `absolute_path_to_gt` – that has a row for each date of reference in the specified date range (2026-01-01, 2026-01-08, 2026-01-15, 2026-01-22, 2026-01-29), and absolute paths to the ground truth data pulled from the FluSight Forecast Hub **vintaged** to that date.
+- `task_list.csv` is a table with two columns – `date` and `absolute_path_to_gt` – that has a row for each date of reference in the specified date range (2026-01-01, 2026-01-08, 2026-01-15, 2026-01-22, 2026-01-29), and absolute paths to the ground truth data pulled from the FluSight Forecast Hub **vintaged** to that date.
 - `gt/` is a folder that contains sub-folders for each date of reference (sub-folders then contain the single ground truth CSVs)
-
