@@ -69,10 +69,11 @@ def setup(config_path=None):
             # make full output path of gt (user/output/path/challenge_id/gt/YYYY-MM-DD/file.csv)
             gt_output_path = gt_output_date_folder / file_name
             gt_df.to_csv(gt_output_path, index=False)
-            date_to_abs_gt_paths[date] = str(gt_output_path)
+            # store path relative to the challenge folder so task_list.csv is portable
+            date_to_abs_gt_paths[date] = str(gt_output_path.relative_to(output_base))
 
     # create task_list.csv at output_base (user/output/path/challenge_id/)
-    task_list = pd.DataFrame(list(date_to_abs_gt_paths.items()), columns=["date", "absolute_path_to_gt"])
+    task_list = pd.DataFrame(list(date_to_abs_gt_paths.items()), columns=["date", "path_to_gt"])
     task_list_output_path = output_base / "task_list.csv"
     task_list.to_csv(task_list_output_path, index=False)
 
