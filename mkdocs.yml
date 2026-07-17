@@ -62,10 +62,13 @@ nav:
       - Installation: getting-started/installation.md
       - Overview: getting-started/overview.md
       - Configuration templates: getting-started/configuration-templates.md
+      - Challenge library commands: getting-started/challenge-library.md
+  - Challenge library: challenges.md
   - Workflows:
       - epibench setup: workflows/epibench-setup.md
       - epibench score: workflows/epibench-score.md
       - epibench plot: workflows/epibench-plot.md
+  - API reference: reference.md
   # - API Reference:
   #     - Overview: api/index.md
   #     - epibench.__init__: api/__init__.md
