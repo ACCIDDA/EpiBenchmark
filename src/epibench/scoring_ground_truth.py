@@ -1,4 +1,4 @@
-"""Class for ground truth data that corresponds to the model data to be scored"""
+"""Scoring-time ground truth data prepared to match model outputs."""
 
 
 import pandas as pd
@@ -7,15 +7,17 @@ from pathlib import Path
 from hubdata import connect_target_data
 from hubdata.create_target_data_schema import TargetType
 
+from .setup_ground_truth import _suppress_missing_target_data_schema_warning
+
 
 logger = logging.getLogger(__name__)
 # these columns can be dropped after processing has occurred
 COLUMNS_TO_KEEP = ['observed', 'target_end_date', 'location', 'target']
 
-class GroundTruth:
+class ScoringGroundTruth:
     def __init__(self, hub_path: Path, target: str, locations: list, eval_start_date: str, eval_end_date: str):
         """
-        Initialization of the GroundTruth class. Pulls directly from a hub local clone using hubdata package.
+        Initialize ScoringGroundTruth from a local hub clone using hubdata.
         Limited validation required.
         """
         self.target = target
@@ -26,9 +28,13 @@ class GroundTruth:
 
     def _process_ground_truth_data(self, hub_path: Path):
         """Process the ground truth data such that it only contains the info we need"""
-        self.gt = self._filter_gt(
-            connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
-        ) # TODO, maybe should clean NAs from here? idk how scoringutils handles them
+        suppress_hubdata_warning = not (hub_path / "hub-config" / "target-data.json").is_file()
+        with _suppress_missing_target_data_schema_warning(enabled=suppress_hubdata_warning):
+            gt = connect_target_data(
+                hub_path=hub_path,
+                target_type=TargetType.TIME_SERIES,
+            ).to_table().to_pandas()
+        self.gt = self._filter_gt(gt) # TODO, maybe should clean NAs from here? idk how scoringutils handles them
         logger.info("Success ✅")
 
     def _filter_gt(self, gt: pd.DataFrame) -> pd.DataFrame:

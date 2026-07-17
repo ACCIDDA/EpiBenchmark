@@ -7,7 +7,7 @@ import hashlib
 import json
 
 from .config import Config
-from .gt_from_hub import gt_from_hub
+from .setup_ground_truth import gt_from_hub
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ def setup(config_path=None):
     # .dates (list of dates as strs)
     # .vintaging (bool)
     # .vintaging_method (str | None)
+    # .vintaging_offset (int)
     # .output_path (Path)
 
     # go to hub, get gt data!
@@ -68,12 +69,13 @@ def setup(config_path=None):
             # make full output path of gt (user/output/path/challenge_id/gt/YYYY-MM-DD/file.csv)
             gt_output_path = gt_output_date_folder / file_name
             gt_df.to_csv(gt_output_path, index=False)
-            date_to_abs_gt_paths[date] = str(gt_output_path)
+            # store path relative to the challenge folder so task_list.csv is portable
+            date_to_abs_gt_paths[date] = str(gt_output_path.relative_to(output_base))
 
-    # create challenges.csv at output_base (user/output/path/challenge_id/)
-    challenges = pd.DataFrame(list(date_to_abs_gt_paths.items()), columns=["date", "absolute_path_to_gt"])
-    challenges_output_path = output_base / "challenges.csv"
-    challenges.to_csv(challenges_output_path, index=False)
+    # create task_list.csv at output_base (user/output/path/challenge_id/)
+    task_list = pd.DataFrame(list(date_to_abs_gt_paths.items()), columns=["date", "path_to_gt"])
+    task_list_output_path = output_base / "task_list.csv"
+    task_list.to_csv(task_list_output_path, index=False)
 
 
 def _build_challenge_id(config_object: Config) -> str:
@@ -85,6 +87,7 @@ def _build_challenge_id(config_object: Config) -> str:
       - dates
       - vintaging
       - vintaging_method
+      - vintaging_offset
 
     Returns:
         challenge_name_hash (str)
@@ -121,6 +124,7 @@ def _build_challenge_id(config_object: Config) -> str:
         "dates": config_object.dates,
         "vintaging": config_object.vintaging,
         "vintaging_method": config_object.vintaging_method,
+        "vintaging_offset": config_object.vintaging_offset,
     }
 
     # Convert to a JSON string

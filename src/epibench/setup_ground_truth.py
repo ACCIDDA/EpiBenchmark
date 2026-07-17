@@ -13,13 +13,42 @@ import pandas as pd
 import pygit2
 import logging
 import subprocess
+import importlib
 from urllib.parse import urlparse
 from pathlib import Path
 from datetime import datetime
+from contextlib import contextmanager
 from hubdata import connect_target_data
 from hubdata.create_target_data_schema import TargetType 
 
 logger = logging.getLogger(__name__)
+hub_target_data_schema_module = importlib.import_module("hubdata.create_target_data_schema")
+
+
+@contextmanager
+def _suppress_missing_target_data_schema_warning(enabled: bool):
+    """
+    Forcefully uppress hubdata's missing target-data.json fallback warning.
+
+    This warning appears when target-data.json is not found and data
+    types have to be inferred for the data. We enforce data types later.
+    """
+    if not enabled:
+        yield
+        return
+
+    original_warn = hub_target_data_schema_module.logger.warn
+
+    def _filtered_warn(event=None, *args, **kwargs):
+        if event == "target-data.json not found. using inferred schema from data":
+            return None
+        return original_warn(event, *args, **kwargs)
+
+    hub_target_data_schema_module.logger.warn = _filtered_warn
+    try:
+        yield
+    finally:
+        hub_target_data_schema_module.logger.warn = original_warn
 
 
 def _checkout_gt_fetch(hub_path: Path, targets: list, date: str, main_branch="main") -> pd.DataFrame: 
@@ -99,6 +128,7 @@ def _asof_gt_fetch(
         Tuple with pd.DataFrame of gt data and a date that describes the gt 
         data (either the latest date included or the only date fetched).
     """
+    suppress_hubdata_warning = not (hub_path / "hub-config" / "target-data.json").is_file()
 
     # multiple dates (fetch to cover a range). use case: non-vintaged gt fetch
     if isinstance(date_s, list): 
@@ -106,7 +136,8 @@ def _asof_gt_fetch(
         latest_date_str = max(date_s)
         latest_date_obj = datetime.strptime(latest_date_str, "%Y-%m-%d").date()
         # get the gt from the hub (accessing timeseries gt data)
-        gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
+        with _suppress_missing_target_data_schema_warning(enabled=suppress_hubdata_warning):
+            gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
         # keep only the target(s) we want; throw error if there are no target matches
         gt = gt[gt['target'].isin(targets)]
         if gt.empty:
@@ -127,7 +158,8 @@ def _asof_gt_fetch(
     # singe date fetch. use case: vintaged gt fetch w/ vintaging_method: "as_of"
     elif isinstance(date_s, str): 
         date_s_obj = datetime.strptime(date_s, "%Y-%m-%d").date()
-        gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
+        with _suppress_missing_target_data_schema_warning(enabled=suppress_hubdata_warning):
+            gt = connect_target_data(hub_path=hub_path, target_type=TargetType.TIME_SERIES).to_table().to_pandas()
         # only keep target(s) we want; throw WARNING and proceed to next date if there are none
         gt = gt[gt['target'].isin(targets)]
         if gt.empty:
@@ -175,12 +207,12 @@ def hub_clone_setup(hub_url: str) -> Path:
     if hub_path.exists() and hub_path.is_dir():
         logger.info(f"Updating existing hub repository: {repo_name}")
         subprocess.run(['git', 'pull'], cwd=hub_path, check=True)
-        logger.info("Hub updated successfully.")
+        logger.info("Hub updated successfully ✅")
     else:
         logger.info(f"Cloning hub repository into {hubs_dir}")
         hubs_dir.mkdir(parents=True, exist_ok=True)
         subprocess.run(['git', 'clone', hub_url], cwd=hubs_dir, check=True)
-        logger.info("Hub cloned successfully.")
+        logger.info("Hub cloned successfully ✅")
 
     return hub_path 
 
@@ -220,11 +252,7 @@ def gt_from_hub(
 
     # if not using vintaging, fetch for latest date
     else:
-        gt, _ = _asof_gt_fetch(
-            hub_path=hub_path,
-            targets=targets,
-            date_s=data_cutoff_dates
-        ) 
+        gt, _ = _asof_gt_fetch(hub_path=hub_path, targets=targets, date_s=data_cutoff_dates) 
         gt_dict[reference_dates[-1]] = gt 
     
     # return gt data dict (keyed by date)

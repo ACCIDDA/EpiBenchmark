@@ -38,6 +38,45 @@ def setup(config_path: str | None) -> None:
 
 
 @cli.command(
+    name="list",
+    short_help="List all challenges available in the EpiBenchmark library.",
+    help=(
+        "List every challenge bundled in the EpiBenchmark challenge library, "
+        "along with its Zenodo availability status."
+    ),
+)
+def list_challenges() -> None:
+    """List the challenges available in the EpiBenchmark library."""
+    from .library import print_challenge_list
+
+    print_challenge_list()
+
+
+@cli.command(
+    short_help="Download a challenge's data files from Zenodo.",
+    help=(
+        "Download the data files for a challenge in the EpiBenchmark library "
+        "from Zenodo into a local folder named after the challenge."
+    ),
+)
+@click.argument("challenge_id", required=True)
+@click.option(
+    "--output-path",
+    type=str,
+    required=False,
+    help=(
+        "Directory to download the challenge into; a subfolder named after the "
+        "challenge is created inside it. Defaults to the current directory."
+    ),
+)
+def fetch(challenge_id: str, output_path: str | None) -> None:
+    """Run the EpiBench fetch pipeline."""
+    from .fetch import fetch as run_fetch
+
+    run_fetch(challenge_id=challenge_id, output_path=output_path)
+
+
+@cli.command(
     short_help="Score model output against ground truth.",
     help=(
         "Command to score model forecasts either from a challenge in the "

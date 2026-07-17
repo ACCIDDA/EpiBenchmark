@@ -1,21 +1,28 @@
 """Start of the `score` pipeline."""
 
-from __future__ import annotations
-
 import json
 import logging
 from importlib import resources
 from pathlib import Path
-from typing import Literal
+from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
 import click
 import pandas as pd
 
 from .config import Config
 from .extract_model_data_details import extract_model_data_details
-from .ground_truth import GroundTruth
-from .gt_from_hub import hub_clone_setup
+from .scoring_ground_truth import ScoringGroundTruth
+from .setup_ground_truth import hub_clone_setup
 from .path_utils import resolve_output_dir, resolve_path
+from .quantile_validation import (
+    validate_for_scoring_config_quantiles,
+    validate_for_scoring_library_challenge_quantiles,
+)
+from .scoring_summary import (
+    build_config_missing_forecast_units_summary,
+    format_missing_forecast_units_warning,
+    write_excluded_files_summary,
+)
 from .scorecard_functions import custom_scorecard
 from .scoring_bridge import ScoringBridge
 
@@ -25,59 +32,32 @@ logger = logging.getLogger(__name__)
 SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash, shoudl be challenge-name
 SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash, should be challenge-name
 
+def _load_library_challenge(challenge_name: str) -> Dict[str, object]:
+    """Load one EpiBenchmark library challenge from the challenges-library directory."""
+    challenges_dir = resources.files("epibench").joinpath("challenges-library")
+    requested_name = Path(challenge_name).stem
 
-def _load_library_challenges() -> dict[str, object]:
-    """Load the EpiBenchmark challenge library (challenges.json)."""
-    challenges_path = resources.files("epibench").joinpath(
-        "challenges-library", "challenges.json"
-    )
-    with challenges_path.open("r", encoding="utf-8") as challenges_file:
+    available_challenge_files = {
+        challenge_path.stem: challenge_path
+        for challenge_path in challenges_dir.iterdir()
+        if challenge_path.is_file() and challenge_path.suffix.lower() == ".json"
+    }
+
+    challenge_path = available_challenge_files.get(requested_name)
+    if challenge_path is None:
+        available_challenge_names = ", ".join(sorted(available_challenge_files))
+        raise click.ClickException(
+            "that challenge is not in the EpiBenchmark challenge library. "
+            f"Available challenges: {available_challenge_names}"
+        )
+
+    with challenge_path.open("r", encoding="utf-8") as challenges_file:
         return json.load(challenges_file)
-
-
-def _score_models(
-    hub_path: Path,
-    model_info: dict[str, list[Path]],
-    include_models: list[str],
-    evaluation_start_date,
-    evaluation_end_date,
-    target: str,
-    baseline_model: str,
-) -> pd.DataFrame:
-    """Run scoringutils (R) and return the resulting score table."""
-
-    logger.info("Validating model data...")
-    model_dict, locations_list = extract_model_data_details(
-        hub_path=hub_path,
-        model_info=model_info,
-        include_models=include_models,
-        eval_start_date=evaluation_start_date,
-        eval_end_date=evaluation_end_date,
-        target=target,
-    )
-
-    logger.info("Retrieving and formatting ground truth data...")
-    gto = GroundTruth(
-        hub_path=hub_path,
-        target=target,
-        locations=locations_list,
-        eval_start_date=evaluation_start_date,
-        eval_end_date=evaluation_end_date,
-    )
-
-    df = pd.concat(model_dict.values(), ignore_index=True)
-    df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
-        columns=["target"]
-    )
-
-    logger.info("Scoring model data...")
-    scorer = ScoringBridge(baseline_model=baseline_model)
-    return scorer.score_forecasts(df)
 
 
 def _write_output_csv(
     output_kind: Literal["scores", "scorecard"],
-    output_data: pd.DataFrame | dict[str, object],
+    output_data: Union[pd.DataFrame, Dict[str, object]],
     output_dir: Path,
 ) -> Path:
     """
@@ -111,7 +91,7 @@ def _write_output_csv(
 def _resolve_model_info(
     model_data_path: str,
     model_name: str,
-) -> tuple[str, dict[str, list[Path]], Path]:
+) -> Tuple[str, Dict[str, List[Path]], Path]:
     """Normalize a library-route model path into the model_info shape used by scoring."""
     resolved_model_data_path = resolve_path(model_data_path)
     # fail if it does not exist
@@ -148,22 +128,75 @@ def _score_from_config(config_path: str) -> None:
     logger.info("Validating config...")
     config_object = Config(config_path=config_path, pipeline="score")
 
-    scores = _score_models(
+    logger.info("Validating model data...")
+    excluded_files = set()  # type: Set[str]
+    model_dict, locations_list = extract_model_data_details(
         hub_path=config_object.hub_path,
         model_info=config_object.model_info,
         include_models=config_object.include_models,
-        evaluation_start_date=config_object.evaluation_start_date,
-        evaluation_end_date=config_object.evaluation_end_date,
+        eval_start_date=config_object.evaluation_start_date,
+        eval_end_date=config_object.evaluation_end_date,
         target=config_object.target,
-        baseline_model=config_object.baseline_model,
+        excluded_files=excluded_files,
     )
 
+    logger.info("Validating quantile structure...")
+    validate_for_scoring_config_quantiles(model_dict)
+    submitted_model_dict = {
+        model_name: model_dict[model_name]
+        for model_name in config_object.model_info
+        if model_name in model_dict
+    }
+    missing_forecast_units_summary = build_config_missing_forecast_units_summary(
+        submitted_model_dict
+    )
+    missing_forecast_units_warning = format_missing_forecast_units_warning(
+        missing_forecast_units_summary
+    )
+    global_target_end_dates = []
+    if missing_forecast_units_summary is not None:
+        global_target_end_dates = missing_forecast_units_summary["target_end_dates"]
+    else:
+        global_target_end_dates = sorted(
+            {
+                pd.Timestamp(target_end_date).strftime("%Y-%m-%d")
+                for forecast_df in submitted_model_dict.values()
+                for target_end_date in forecast_df["target_end_date"]
+            }
+        )
+
+    logger.info("Retrieving and formatting ground truth data...")
+    gto = ScoringGroundTruth(
+        hub_path=config_object.hub_path,
+        target=config_object.target,
+        locations=locations_list,
+        eval_start_date=config_object.evaluation_start_date,
+        eval_end_date=config_object.evaluation_end_date,
+    )
+
+    df = pd.concat(model_dict.values(), ignore_index=True)
+    df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
+        columns=["target"]
+    )
+
+    logger.info("Scoring model data...")
+    scorer = ScoringBridge(baseline_model=config_object.baseline_model)
+    scores = scorer.score_forecasts(df)
+
     full_output_path = _write_output_csv("scores", scores, config_object.output_path)
+    write_excluded_files_summary(
+        excluded_files=excluded_files,
+        target=config_object.target,
+        output_dir=config_object.output_path,
+        target_end_dates=global_target_end_dates,
+        missing_forecast_units_warning=missing_forecast_units_warning,
+    )
     logger.info("Process executed successfully to end 🎉.")
     logger.info(f"Output file at {full_output_path}")
+    logger.info("See summary.md for information on your model data.")
 
 
-def score_from_challenge_library(
+def _score_from_challenge_library(
     challenge_name: str,
     model_data_path: str,
     model_name: str,
@@ -171,27 +204,28 @@ def score_from_challenge_library(
 ) -> None:
     """Run challenge library scoring (scores CSV + scorecard)"""
 
-    # fail if provided challenge is not in our library
     logger.info("Loading challenge library...")
-    library_challenges = _load_library_challenges()
-    library_challenge_entries = library_challenges.get("challenges", {})
-    if challenge_name not in library_challenge_entries:
-        raise click.ClickException(
-            "that challenge is not in the EpiBenchmark challenge library"
-        )
-    challenge_definition = library_challenge_entries[challenge_name]
+    challenge_definition = _load_library_challenge(challenge_name)
     logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
 
     model_name, model_info, _ = _resolve_model_info(model_data_path, model_name)
     output_dir = resolve_output_dir(output_path)
 
-    # set target 
+    # set quantiles
+    quantiles = challenge_definition["quantiles"]
+
+    # set target
     target = str(challenge_definition["target"])
 
-    # set eval start and end
-    challenge_target_end_dates = challenge_definition.get("target_end_dates", [])
-    evaluation_start_date = pd.to_datetime(min(challenge_target_end_dates))
-    evaluation_end_date = pd.to_datetime(max(challenge_target_end_dates))
+    # derive eval window (first ref date minus lowest horizon, last ref date plus highest horizon)
+    challenge_reference_dates = challenge_definition.get("reference_dates")
+    reference_date_series = pd.to_datetime(challenge_reference_dates)
+    horizon_offsets = [
+        pd.to_timedelta(int(horizon), unit="W")
+        for horizon in challenge_definition["horizons"]
+    ]
+    evaluation_start_date = min(reference_date_series + min(horizon_offsets))
+    evaluation_end_date = max(reference_date_series + max(horizon_offsets))
 
     # ensure hub clone
     hub_path = hub_clone_setup(hub_url=challenge_definition["hub_path"])
@@ -200,36 +234,83 @@ def score_from_challenge_library(
     baseline_model = challenge_definition["baseline_model"]
     include_models = [baseline_model]
 
-    # send to general scoring function (to be sent to R scoringutils)
-    scores = _score_models(
+    # validate input model data
+    logger.info("Validating model data...")
+    filtered_facets_by_file = {}  # type: Dict[str, Set[str]]
+    excluded_files = set()  # type: Set[str]
+    model_dict, locations_list = extract_model_data_details(
         hub_path=hub_path,
         model_info=model_info,
         include_models=include_models,
-        evaluation_start_date=evaluation_start_date,
-        evaluation_end_date=evaluation_end_date,
+        eval_start_date=evaluation_start_date,
+        eval_end_date=evaluation_end_date,
         target=target,
-        baseline_model=baseline_model,
+        required_reference_dates=challenge_reference_dates,
+        required_locations=challenge_definition["locations"],
+        required_horizons=challenge_definition["horizons"],
+        filtered_facets_by_file=filtered_facets_by_file,
+        excluded_files=excluded_files,
     )
 
-    score_output_path = _write_output_csv("scores", scores, output_dir)
-    logger.info(f"Output scoring file at {score_output_path}")
+    # validate quantiles
+    logger.info("Validating quantile structure...")
+    validate_for_scoring_library_challenge_quantiles(
+        model_dict,
+        quantiles,
+        filtered_facets_by_file=filtered_facets_by_file,
+    )
+    write_excluded_files_summary(
+        excluded_files=excluded_files,
+        target=target,
+        reference_dates=challenge_reference_dates,
+        horizons=challenge_definition["horizons"],
+        quantiles=quantiles,
+        locations=challenge_definition["locations"],
+        output_dir=output_dir,
+    )
 
-    # build scorecard using custom function registry
+    for model_name_key, forecast_df in model_dict.items():
+        if "_source_file" in forecast_df.columns:
+            model_dict[model_name_key] = forecast_df.drop(columns=["_source_file"])
+
+    # fetch (unvintaged) gt data for scoring
+    logger.info("Retrieving and formatting ground truth data...")
+    gto = ScoringGroundTruth(
+        hub_path=hub_path,
+        target=target,
+        locations=locations_list,
+        eval_start_date=evaluation_start_date,
+        eval_end_date=evaluation_end_date,
+    )
+
+    df = pd.concat(model_dict.values(), ignore_index=True)
+    df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
+        columns=["target"]
+    )
+
+    # score and save scoring file
+    logger.info("Scoring model data...")
+    scorer = ScoringBridge(baseline_model=baseline_model)
+    scores = scorer.score_forecasts(df)
+    _write_output_csv("scores", scores, output_dir)
+
+    # build scorecard using custom function registry (and save)
     scorecard_results = custom_scorecard(
         model_name=model_name,
         scorecard_function_names=challenge_definition["scorecard_function"],
         score_file=scores,
     )
-    scorecard_output_path = _write_output_csv("scorecard", scorecard_results, output_dir)
-    logger.info(f"Scorecard output file at {scorecard_output_path}")
+    _write_output_csv("scorecard", scorecard_results, output_dir)
+    logger.info(f"Find output at {output_dir}")
+    logger.info("See summary.md for information on your model data.")
 
 
 def score(
-    challenge_name: str | None = None,
-    model_data_path: str | None = None,
-    model_name: str | None = None,
-    output_path: str | None = None,
-    config_path: str | None = None,
+    challenge_name: Optional[str] = None,
+    model_data_path: Optional[str] = None,
+    model_name: Optional[str] = None,
+    output_path: Optional[str] = None,
+    config_path: Optional[str] = None,
 ) -> None:
     """
     Main execution function for the `epibench score` pipeline.
@@ -237,7 +318,6 @@ def score(
     using_library_challenge = challenge_name is not None or model_data_path is not None
     using_config = config_path is not None
 
-    logger.info("Validating score inputs...")
     # fail if both --model-data-path and --config-path are provided
     if using_library_challenge and using_config:
         raise click.UsageError("Use either a library challenge with --model-data-path or --config-path, not both.")
@@ -283,7 +363,7 @@ def score(
             "--output-path is required when using a library challenge."
         )
     # otherwise, score score normally + build scorecard 
-    score_from_challenge_library(
+    _score_from_challenge_library(
         challenge_name=challenge_name,
         model_data_path=model_data_path,
         model_name=model_name,
