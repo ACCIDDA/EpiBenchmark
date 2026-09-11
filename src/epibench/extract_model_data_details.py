@@ -508,19 +508,12 @@ def extract_model_data_details(
         model_dict[model] = concatenated_df
 
     locations_list = list(set(global_locations_list))
-    allowed_forecast_units = (
-        pd.concat(model_dict.values(), ignore_index=True)[
-            ["reference_date", "target_end_date", "location", "horizon"]
-        ]
-        .drop_duplicates()
-        if model_dict
-        else None
-    )
-    
     # get extra model data
     for extra_model in include_models:
         extra_model_locations = locations_list
-        extra_model_allowed_forecast_units = allowed_forecast_units
+        # Config-route alignment is performed after every included model has
+        # been loaded, so removed and missing facets can be reported.
+        extra_model_allowed_forecast_units = None
         if strict_grid_validation_enabled:
             extra_model_locations = list(normalized_required_locations)
             extra_model_allowed_forecast_units = None

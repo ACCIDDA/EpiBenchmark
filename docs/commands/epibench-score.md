@@ -53,6 +53,17 @@ The output of an `epibench score` run depends on whether the run was associated 
 * `EpiBenchmark_scorecard.csv`: A CSV file with a column for every scoring metric defined in that library challenge, and a single row of values
 * `summary.md`: A human-readable markdown file describing the data used for scoring, what was filtered out, etc.
 
+For config-based scoring, the required baseline and any models named in
+`include_models` are restricted to the union of facets found across all models
+in `models`.
+A facet is one forecast unit at one specific quantile level, so matching uses
+reference date, target end date, location, horizon, and quantile level. The
+summary reports how many facets were retained and removed for each included hub
+model, and warns when an included model is missing any facet from that union
+set. After this paring, every retained baseline or included model is subjected
+to the same quantile validation as the submitted models. Quantile-validation
+failure in any submitted, baseline, or included model stops the scoring run.
+
 If you ran `epibench score --config-path`, only the `EpiBenchmark_scores.csv` and `summary.md` files will be produced. EpiBenchmark will not overwrite pre-existing files, and will therefore exit with error if the `output_path` already contains scoring output.
 
 `Epibenchmark_scores.csv` will have a set of columns that serve as a composite key, and therefore make up a forecast unit: `model`, `reference_date`, `target_end_date`, `location`, and `horizon`. It will also have nine score columns:
