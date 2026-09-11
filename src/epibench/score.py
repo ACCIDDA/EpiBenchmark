@@ -19,13 +19,14 @@ from .quantile_validation import (
 from .scoring_summary import (
     FILTER_SUMMARY_FILENAME,
     build_config_missing_forecast_units_summary,
-    build_extra_model_forecast_unit_coverage_summary,
-    format_extra_model_coverage_warning,
+    build_extra_model_facet_coverage_summary,
+    format_extra_model_facet_coverage_warning,
+    format_extra_model_facet_paring_summary,
     format_missing_forecast_units_warning,
     write_excluded_files_summary,
 )
 from .scorecard_functions import custom_scorecard
-from .scoring_bridge import ScoringBridge
+from .scoring_bridge import ScoringBridge, pare_down_extra_models
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -114,36 +115,54 @@ def _score_from_config(config_path: str) -> None:
         excluded_files=excluded_files,
     )
 
-    logger.info("Validating quantile structure...")
-    validate_for_scoring_config_quantiles(model_dict)
     submitted_model_dict = {
         model_name: model_dict[model_name]
         for model_name in config_object.model_info
         if model_name in model_dict
     }
+
     extra_model_dict = {
         model_name: model_dict[model_name]
         for model_name in config_object.include_models
         if model_name in model_dict
     }
+    extra_model_facet_coverage_summary = build_extra_model_facet_coverage_summary(
+        submitted_model_dict,
+        extra_model_dict,
+    )
+    pared_extra_model_dict, facet_paring_summaries = pare_down_extra_models(
+        submitted_model_dict,
+        extra_model_dict,
+    )
+    model_dict = {
+        **submitted_model_dict,
+        **pared_extra_model_dict,
+    }
+
+    # Irrelevant extra-model quantiles have now been removed. Quantile
+    # validation remains fatal for every submitted, baseline, and included
+    # model whose data would be scored.
+    logger.info("Validating quantile structure...")
+    validate_for_scoring_config_quantiles(model_dict)
+
     missing_forecast_units_summary = build_config_missing_forecast_units_summary(
         submitted_model_dict
     )
     missing_forecast_units_warning = format_missing_forecast_units_warning(
         missing_forecast_units_summary
     )
-    extra_model_coverage_summary = build_extra_model_forecast_unit_coverage_summary(
-        submitted_model_dict,
-        extra_model_dict,
+    extra_model_facet_coverage_warning = format_extra_model_facet_coverage_warning(
+        extra_model_facet_coverage_summary
     )
-    extra_model_coverage_warning = format_extra_model_coverage_warning(
-        extra_model_coverage_summary
+    extra_model_facet_paring_summary = format_extra_model_facet_paring_summary(
+        facet_paring_summaries
     )
     summary_warning_blocks = "\n\n---\n\n".join(
         warning
         for warning in (
             missing_forecast_units_warning,
-            extra_model_coverage_warning,
+            extra_model_facet_paring_summary,
+            extra_model_facet_coverage_warning,
         )
         if warning
     )

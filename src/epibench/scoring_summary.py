@@ -6,6 +6,10 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 import pandas as pd
 
 from .horizon_utils import sort_horizon_strings
+from .scoring_bridge import (
+    facet_keys,
+    submitted_facet_union,
+)
 
 FILTER_SUMMARY_FILENAME = "summary.md"
 
@@ -119,21 +123,28 @@ def build_config_missing_forecast_units_summary(
     }
 
 
-def build_extra_model_forecast_unit_coverage_summary(
+def build_extra_model_facet_coverage_summary(
     submitted_model_dict: Dict[str, pd.DataFrame],
     extra_model_dict: Dict[str, pd.DataFrame],
 ) -> Optional[Dict[str, object]]:
-    """Describe extra models missing forecast units from the submitted-model union."""
+    """Describe hub models missing facets present in any submitted model."""
 
     def _normalize_date_strings(date_series: pd.Series) -> pd.Series:
         return pd.to_datetime(date_series, errors="raise").dt.strftime("%Y-%m-%d")
 
-    def _sort_unit(unit: Tuple[str, str, str, str]) -> Tuple[str, str, str, Tuple[int, object]]:
+    def _sort_unit(
+        unit: Tuple[str, ...],
+    ) -> Tuple[str, str, str, Tuple[int, object]]:
         horizon = str(unit[3])
         horizon_sort = (0, int(horizon)) if horizon.isdigit() else (1, horizon)
         return (unit[0], unit[1], unit[2], horizon_sort)
 
-    submitted_global_units = set()
+    def _sort_quantile_level(quantile_level: str) -> float:
+        return float(quantile_level)
+
+    submitted_global_facets = submitted_facet_union(
+        submitted_model_dict
+    )
     submitted_locations = set()
     submitted_horizons = set()
     submitted_reference_dates = set()
@@ -146,31 +157,35 @@ def build_extra_model_forecast_unit_coverage_summary(
         unit_rows = normalized[
             ["reference_date", "target_end_date", "location", "horizon"]
         ].drop_duplicates()
-        submitted_global_units.update(
-            tuple(unit_row) for unit_row in unit_rows.itertuples(index=False, name=None)
-        )
         submitted_locations.update(unit_rows["location"])
         submitted_horizons.update(unit_rows["horizon"])
         submitted_reference_dates.update(unit_rows["reference_date"])
         submitted_target_end_dates.update(unit_rows["target_end_date"])
 
-    if not submitted_global_units or not extra_model_dict:
+    if not submitted_global_facets or not extra_model_dict:
         return None
 
     model_summaries = []
     for model_name in sorted(extra_model_dict):
-        normalized = extra_model_dict[model_name].copy()
-        normalized["reference_date"] = _normalize_date_strings(normalized["reference_date"])
-        normalized["target_end_date"] = _normalize_date_strings(normalized["target_end_date"])
-        unit_rows = normalized[
-            ["reference_date", "target_end_date", "location", "horizon"]
-        ].drop_duplicates()
-        model_units = {
-            tuple(unit_row) for unit_row in unit_rows.itertuples(index=False, name=None)
-        }
-        missing_units = sorted(submitted_global_units - model_units, key=_sort_unit)
-        if not missing_units:
+        model_facets = facet_keys(extra_model_dict[model_name])
+        missing_facets = submitted_global_facets - model_facets
+        if not missing_facets:
             continue
+        submitted_units = {facet[:4] for facet in submitted_global_facets}
+        model_units = {facet[:4] for facet in model_facets}
+        missing_units = sorted(
+            submitted_units - model_units,
+            key=_sort_unit,
+        )
+        missing_unit_set = set(missing_units)
+        missing_quantiles = sorted(
+            {
+                missing_facet[4]
+                for missing_facet in missing_facets
+                if missing_facet[:4] not in missing_unit_set
+            },
+            key=_sort_quantile_level,
+        )
         model_summaries.append(
             {
                 "model_name": model_name,
@@ -183,6 +198,7 @@ def build_extra_model_forecast_unit_coverage_summary(
                     }
                     for missing_unit in missing_units
                 ],
+                "missing_quantiles": missing_quantiles,
             }
         )
 
@@ -212,7 +228,9 @@ def format_missing_forecast_units_warning(
     lines = [
         "## ⚠️ Warning",
         "",
-        "Not all submitted models contain the same forecast units or quantile levels.",
+        "Not all submitted models (models provided via `models` config key) contain the same forecast facets. Score comparison across models without identical forecast facets may be misleading.",
+        "A *forecast unit* is a unique combination of model, reference_date, target_end_date, location, and horizon.",
+        "A *forecast facet* is a forecast unit plus a specific quantile level.",
         "",
         "Global submitted-model facets observed across the run:",
         "",
@@ -222,7 +240,7 @@ def format_missing_forecast_units_warning(
         f"- target_end_dates: {', '.join(missing_forecast_units_summary['target_end_dates'])}",
         f"- quantiles: {', '.join(missing_forecast_units_summary['quantiles'])}",
         "",
-        "Missing data by model:",
+        "Missing data by submitted model:",
         "",
     ]
 
@@ -265,31 +283,25 @@ def format_missing_forecast_units_warning(
     return "\n".join(lines).rstrip()
 
 
-def format_extra_model_coverage_warning(
-    extra_model_coverage_summary: Optional[Dict[str, object]],
+def format_extra_model_facet_coverage_warning(
+    extra_model_facet_coverage_summary: Optional[Dict[str, object]],
 ) -> str:
-    """Build a markdown warning block for extra models missing submitted forecast units."""
-    if not extra_model_coverage_summary:
+    """Build a Markdown warning for extra models missing submitted facets."""
+    if not extra_model_facet_coverage_summary:
         return ""
 
-    model_summaries = extra_model_coverage_summary.get("models", [])
+    model_summaries = extra_model_facet_coverage_summary.get("models", [])
     if not model_summaries:
         return ""
 
     lines = [
         "## ⚠️ Warning",
         "",
-        "Not all included hub models contain the full forecast-unit set found across the submitted models.",
-        "Comparisons involving these models might not be 1:1 across every forecast unit.",
+        "Not all extra models (`include_models` config key + baseline model) included in scoring contain every facet in the union of submitted-model facets. Score comparison across models without identical forecast facets may be misleading.",
+        "A *forecast unit* is a unique combination of model, reference_date, target_end_date, location, and horizon.",
+        "A *forecast facet* is a forecast unit plus a specific quantile level.",
         "",
-        "Submitted-model forecast-unit facets observed across the run:",
-        "",
-        f"- locations: {', '.join(extra_model_coverage_summary['locations'])}",
-        f"- horizons: {', '.join(extra_model_coverage_summary['horizons'])}",
-        f"- reference_dates: {', '.join(extra_model_coverage_summary['reference_dates'])}",
-        f"- target_end_dates: {', '.join(extra_model_coverage_summary['target_end_dates'])}",
-        "",
-        "Missing forecast units by included hub model:",
+        "Missing data by extra model:",
         "",
     ]
 
@@ -316,9 +328,46 @@ def format_extra_model_coverage_warning(
                     f"{missing_unit['location']} | "
                     f"{missing_unit['horizon']} |"
                 )
-        lines.append("")
+        lines.extend(
+            [
+                "",
+                "Missing quantiles: "
+                + (
+                    ", ".join(model_summary["missing_quantiles"])
+                    if model_summary["missing_quantiles"]
+                    else "None"
+                ),
+                "",
+            ]
+        )
 
     return "\n".join(lines).rstrip()
+
+
+def format_extra_model_facet_paring_summary(
+    facet_paring_summaries: List[Dict[str, object]],
+) -> str:
+    """Describe included hub-model facets removed before config-route scoring."""
+    if not facet_paring_summaries:
+        return ""
+
+    lines = [
+        "## Extra models pared down by facet",
+        "",
+        "The baseline model and any additional hub models were restricted to the union of facets found across all submitted models.",
+        "",
+        "| model | original facets | retained facets | removed facets |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+    for summary in sorted(
+        facet_paring_summaries,
+        key=lambda item: str(item["model_name"]),
+    ):
+        lines.append(
+            f"| {summary['model_name']} | {summary['original_facets']} | "
+            f"{summary['retained_facets']} | {summary['removed_facets']} |"
+        )
+    return "\n".join(lines)
 
 
 def format_excluded_files_summary(
@@ -343,7 +392,7 @@ def format_excluded_files_summary(
     if missing_forecast_units_warning:
         lines.extend([missing_forecast_units_warning, "", "---", ""])
 
-    lines.extend(["file(s) excluded from scoring:", ""])
+    lines.extend(["## Files excluded from scoring", ""])
 
     if not excluded_file_list:
         lines.append("None")
