@@ -37,7 +37,8 @@ dependencies = [
     "PyYAML>=6.0",
     "pygit2",
     "hubdata",
-    "matplotlib>=3.7"
+    "matplotlib>=3.7",
+    "beautifulsoup4>=4.15.0",
 ]
 
 [dependency-groups]

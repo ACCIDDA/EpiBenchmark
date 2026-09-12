@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import zipfile
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 from urllib.request import Request, urlopen
 
 import click
+from bs4 import BeautifulSoup
 
 from .library import is_published, load_challenge
 
@@ -18,6 +20,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 _ZENODO_RECORDS_API = "https://zenodo.org/api/records"
+CHALLENGE_DETAILS_FILENAME = "challenge_details.json"
 
 
 def fetch(challenge_id: str, output_path: Optional[str] = None) -> None:
@@ -44,7 +47,8 @@ def fetch(challenge_id: str, output_path: Optional[str] = None) -> None:
     challenge_dir.mkdir(parents=True)
 
     try:
-        files = _get_json(f"{_ZENODO_RECORDS_API}/{record_id}").get("files") or []
+        record = _get_json(f"{_ZENODO_RECORDS_API}/{record_id}")
+        files = record.get("files") or []
         if not files:
             raise click.ClickException(f"Zenodo record {record_id} contains no files.")
         logger.info("Downloading %d file(s) from Zenodo record %s...", len(files), record_id)
@@ -55,6 +59,23 @@ def fetch(challenge_id: str, output_path: Optional[str] = None) -> None:
             archive.unlink()
         # keep the challenge definition alongside the data for downstream scoring
         (challenge_dir / f"{challenge_id}.json").write_text(json.dumps(definition, indent=4))
+
+        # keep the record's "Challenge details" Field/Value table (if present) as JSON
+        description_html = record.get("metadata", {}).get("description", "")
+        challenge_details = _extract_challenge_details_table(description_html)
+        if challenge_details:
+            (challenge_dir / CHALLENGE_DETAILS_FILENAME).write_text(
+                json.dumps(challenge_details, indent=4, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            logger.info("Saved %s", challenge_dir / CHALLENGE_DETAILS_FILENAME)
+        else:
+            logger.warning(
+                "Could not find a 'Field'/'Value' challenge-details table in the "
+                "Zenodo record description for %s; skipping %s.",
+                record_id,
+                CHALLENGE_DETAILS_FILENAME,
+            )
     except BaseException:
         shutil.rmtree(challenge_dir, ignore_errors=True)  # don't leave a partial folder behind
         raise
@@ -104,3 +125,45 @@ def _extract_zip(archive_path: Path, dest_dir: Path) -> None:
             else:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(archive.read(member))
+
+
+def _cell_text(cell) -> str:
+    """
+    Flatten one <td>/<th> cell to plain text.
+
+    Args:
+        cell: a cell in a table.
+
+    Returns:
+        string value in a cell.
+    """
+    return re.sub(r"\s+", " ", cell.get_text()).strip()
+
+
+def _extract_challenge_details_table(description_html: str) -> Dict[str, str]:
+    """
+    Parse the "Field" / "Value" challenge-details table out of a Zenodo
+    record's HTML ``metadata.description``.
+
+    Args:
+        description_html: desciption string.
+
+    Returns: 
+        a ``{field: value}`` dict.
+    """
+    soup = BeautifulSoup(description_html or "", "html.parser")
+
+    for table in soup.find_all("table"):
+        rows = [
+            [_cell_text(cell) for cell in row.find_all(["th", "td"])]
+            for row in table.find_all("tr")
+        ]
+        rows = [row for row in rows if row]
+        if not rows:
+            continue
+        header = [cell.lower() for cell in rows[0]]
+        if header[:2] != ["field", "value"]:
+            continue
+        return {row[0]: row[1] for row in rows[1:] if len(row) >= 2}
+
+    return {}
