@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import click
 
 from . import __version__
@@ -117,15 +119,62 @@ def score(
     config_path: str | None,
 ) -> None:
     """Run the EpiBench score pipeline."""
-    from .score import score as run_score
+    from .scoring import _score_from_config as run_score_from_config
+    from .scoring import score_challenge as run_score_challenge
 
-    run_score(
+    # enable logger when tool is used via CLI
+    # (we don't log when functions are imported)
+    logging.basicConfig(level=logging.INFO)
+
+    using_library_challenge = challenge_name is not None or model_data_path is not None
+    using_config = config_path is not None
+
+    if using_library_challenge and using_config:
+        raise click.UsageError(
+            "Use either a library challenge with --model-data-path or --config-path, not both."
+        )
+
+    if using_config:
+        if (
+            challenge_name is not None
+            or model_data_path is not None
+            or model_name is not None
+            or output_path is not None
+        ):
+            raise click.UsageError(
+                "When using --config-path, do not provide challenge-name, "
+                "--model-data-path, --model-name, or --output-path."
+            )
+        run_score_from_config(config_path=config_path)
+        return
+
+    if challenge_name is None and model_data_path is None:
+        raise click.UsageError(
+            "Provide either <challenge-name> with --model-data-path or --config-path."
+        )
+    if challenge_name is None:
+        raise click.UsageError(
+            "A library challenge name is required when using --model-data-path."
+        )
+    if model_data_path is None:
+        raise click.UsageError(
+            "--model-data-path is required when using a library challenge."
+        )
+    if model_name is None:
+        raise click.UsageError(
+            "--model-name is required when using a library challenge."
+        )
+    if output_path is None:
+        raise click.UsageError(
+            "--output-path is required when using a library challenge."
+        )
+
+    result = run_score_challenge(
         challenge_name=challenge_name,
         model_data_path=model_data_path,
         model_name=model_name,
-        output_path=output_path,
-        config_path=config_path,
     )
+    result.save(output_path)
 
 
 @cli.command(

@@ -1,13 +1,19 @@
-"""Start of the `score` pipeline."""
+"""Public Python API and shared implementation for EpiBench scoring.
 
+The functions in this module are used by both the Click command-line interface
+and Python callers.  Scoring logic therefore lives here rather than in the CLI.
+"""
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import date, datetime
 import logging
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
-import click
 import pandas as pd
 
-from .config import Config
+from .config import Config, ScoreParameters, build_score_parameters
 from .extract_model_data_details import extract_model_data_details
 from .load_library_challenge import load_library_challenge
 from .scoring_ground_truth import ScoringGroundTruth
@@ -22,17 +28,72 @@ from .scoring_summary import (
     build_extra_model_facet_coverage_summary,
     format_extra_model_facet_coverage_warning,
     format_extra_model_facet_paring_summary,
+    format_excluded_files_summary,
     format_missing_forecast_units_warning,
-    write_excluded_files_summary,
 )
 from .scorecard_functions import custom_scorecard
 from .scoring_bridge import ScoringBridge, pare_down_extra_models
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash, shoudl be challenge-name
 SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash, should be challenge-name
+
+
+@dataclass
+class ScoreResult:
+    """Structured result returned by the programmatic scoring API.
+
+    DataFrames are always available in memory. Output paths are populated after
+    :meth:`save` is called. Standard scoring never produces a scorecard, so
+    ``scorecard`` and ``scorecard_path`` are always ``None`` when ``mode`` is
+    ``"standard"``.
+    """
+
+    mode: Literal["standard", "challenge"]
+    scores: pd.DataFrame
+    scorecard: Optional[pd.DataFrame]
+    summary: str
+    excluded_files: frozenset[str]
+    output_dir: Optional[Path] = None
+    scores_path: Optional[Path] = None # only populated if .save() method is used
+    scorecard_path: Optional[Path] = None # only populated if .save() method is used
+    summary_path: Optional[Path] = None # only populated if .save() method is used
+
+    def save(self, output_path: str | Path | None = None) -> "ScoreResult":
+        """Save all applicable scoring artifacts and return this result.
+
+        - destination defaults to current working dir (unless output_path is provided)
+        - director is created when it did not already exist (mkdir=T)
+        - no overwrites (failure upon pre-existing file)
+        """
+        files_to_save = [SCORES_FILENAME, FILTER_SUMMARY_FILENAME]
+        if self.scorecard is not None:
+            files_to_save.append(SCORECARD_FILENAME)
+
+        output_dir = resolve_output_dir(
+            output_path or Path.cwd(),
+            files_to_save=files_to_save,
+        )
+        scores_path = _write_output_csv("scores", self.scores, output_dir)
+
+        scorecard_path = None
+        if self.scorecard is not None:
+            scorecard_path = _write_output_csv(
+                "scorecard",
+                self.scorecard,
+                output_dir,
+            )
+
+        summary_path = output_dir / FILTER_SUMMARY_FILENAME
+        summary_path.write_text(self.summary + "\n", encoding="utf-8")
+
+        self.output_dir = output_dir
+        self.scores_path = scores_path
+        self.scorecard_path = scorecard_path
+        self.summary_path = summary_path
+        logger.info("Scoring artifacts saved to %s", output_dir)
+        return self
 
 
 def _write_output_csv(
@@ -53,7 +114,11 @@ def _write_output_csv(
     # name for scorecard csv
     else:
         output_path = output_dir / SCORECARD_FILENAME
-        output_df = pd.DataFrame([output_data])
+        output_df = (
+            output_data
+            if isinstance(output_data, pd.DataFrame)
+            else pd.DataFrame([output_data])
+        )
     # ensure type coercion worked
     if not isinstance(output_df, pd.DataFrame):
         raise TypeError("Score output data must be a pandas DataFrame.")
@@ -98,32 +163,68 @@ def _resolve_model_info(
     return model_name, model_info, resolved_model_data_path
 
 
-def _score_from_config(config_path: str) -> None:
-    """Run the config-driven scoring workflow (just CSV; no scorecard made)"""
+def score(
+    *,
+    hub_path: str | Path,
+    evaluation_start_date: str | date | datetime,
+    evaluation_end_date: str | date | datetime,
+    target: str,
+    models: Mapping[str, str | Path | Sequence[str | Path]],
+    baseline_model: str,
+    include_models: Sequence[str] | None = None,
+) -> ScoreResult:
+    """Run standard (non-library-challenge) scoring from explicit inputs.
+
+    ``models`` maps each submitted model name to a CSV file, a directory of CSV
+    files, or a sequence of those paths. The baseline and any ``include_models``
+    are loaded from the hub exactly as they are for YAML-configured CLI runs.
+    Results remain in memory until :meth:`ScoreResult.save` is called.
+    """
+    logger.info("Validating scoring inputs...")
+    parameters = build_score_parameters(
+        hub_path=hub_path,
+        evaluation_start_date=evaluation_start_date,
+        evaluation_end_date=evaluation_end_date,
+        target=target,
+        models=models,
+        baseline_model=baseline_model,
+        include_models=include_models,
+    )
+    return _score_standard(parameters)
+
+
+def _score_from_config(config_path: str | Path) -> ScoreResult:
+    """Adapt a YAML score configuration to the _score_standard() functionality and automatically save it."""
     logger.info("Validating config...")
     config_object = Config(config_path=config_path, pipeline="score")
+    result = _score_standard(config_object.score_parameters)
+    return result.save(config_object.output_path)
+
+
+def _score_standard(parameters: ScoreParameters) -> ScoreResult:
+    """Execute standard scoring from normalized parameters."""
 
     logger.info("Validating model data...")
     excluded_files = set()  # type: Set[str]
     model_dict, locations_list = extract_model_data_details(
-        hub_path=config_object.hub_path,
-        model_info=config_object.model_info,
-        include_models=config_object.include_models,
-        eval_start_date=config_object.evaluation_start_date,
-        eval_end_date=config_object.evaluation_end_date,
-        target=config_object.target,
+        hub_path=parameters.hub_path,
+        model_info=parameters.model_info,
+        include_models=parameters.include_models,
+        eval_start_date=parameters.evaluation_start_date,
+        eval_end_date=parameters.evaluation_end_date,
+        target=parameters.target,
         excluded_files=excluded_files,
     )
 
     submitted_model_dict = {
         model_name: model_dict[model_name]
-        for model_name in config_object.model_info
+        for model_name in parameters.model_info
         if model_name in model_dict
     }
 
     extra_model_dict = {
         model_name: model_dict[model_name]
-        for model_name in config_object.include_models
+        for model_name in parameters.include_models
         if model_name in model_dict
     }
     extra_model_facet_coverage_summary = build_extra_model_facet_coverage_summary(
@@ -139,9 +240,6 @@ def _score_from_config(config_path: str) -> None:
         **pared_extra_model_dict,
     }
 
-    # Irrelevant extra-model quantiles have now been removed. Quantile
-    # validation remains fatal for every submitted, baseline, and included
-    # model whose data would be scored.
     logger.info("Validating quantile structure...")
     validate_for_scoring_config_quantiles(model_dict)
 
@@ -180,11 +278,11 @@ def _score_from_config(config_path: str) -> None:
 
     logger.info("Retrieving and formatting ground truth data...")
     gto = ScoringGroundTruth(
-        hub_path=config_object.hub_path,
-        target=config_object.target,
+        hub_path=parameters.hub_path,
+        target=parameters.target,
         locations=locations_list,
-        eval_start_date=config_object.evaluation_start_date,
-        eval_end_date=config_object.evaluation_end_date,
+        eval_start_date=parameters.evaluation_start_date,
+        eval_end_date=parameters.evaluation_end_date,
     )
 
     df = pd.concat(model_dict.values(), ignore_index=True)
@@ -193,43 +291,45 @@ def _score_from_config(config_path: str) -> None:
     )
 
     logger.info("Scoring model data...")
-    scorer = ScoringBridge(baseline_model=config_object.baseline_model)
+    scorer = ScoringBridge(baseline_model=parameters.baseline_model)
     scores = scorer.score_forecasts(df)
 
-    full_output_path = _write_output_csv("scores", scores, config_object.output_path)
-    write_excluded_files_summary(
+    summary_arguments = dict(
         excluded_files=excluded_files,
-        target=config_object.target,
-        output_dir=config_object.output_path,
+        target=parameters.target,
         target_end_dates=global_target_end_dates,
         missing_forecast_units_warning=summary_warning_blocks,
     )
+    summary = format_excluded_files_summary(**summary_arguments)
     logger.info("Process executed successfully to end 🎉.")
-    logger.info(f"Output file at {full_output_path}")
-    logger.info("See summary.md for information on your model data.")
+    return ScoreResult(
+        mode="standard",
+        scores=scores,
+        scorecard=None,
+        summary=summary,
+        excluded_files=frozenset(excluded_files),
+    )
 
 
-def _score_from_challenge_library(
+def score_challenge(
     challenge_name: str,
-    model_data_path: str,
+    model_data_path: str | Path,
     model_name: str,
-    output_path: str,
-) -> None:
-    """Run challenge library scoring (scores CSV + scorecard)"""
+) -> ScoreResult:
+    """Score a model against a bundled EpiBench library challenge.
 
+    The complete library-challenge workflow is preserved: challenge metadata is
+    loaded, model inputs and quantiles are validated, the required baseline is
+    included, ground truth is merged, and both scores and the challenge-specific
+    scorecard are calculated.
+
+    Results remain in memory until :meth:`ScoreResult.save` is called.
+    """
     logger.info("Loading challenge library...")
     challenge_definition = load_library_challenge(challenge_name)
     logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
 
     model_name, model_info, _ = _resolve_model_info(model_data_path, model_name)
-    output_dir = resolve_output_dir(
-        output_path,
-        files_to_save=[
-            SCORES_FILENAME,
-            SCORECARD_FILENAME,
-            FILTER_SUMMARY_FILENAME,
-        ],
-    )
 
     # set quantiles
     quantiles = challenge_definition["quantiles"]
@@ -237,7 +337,8 @@ def _score_from_challenge_library(
     # set target
     target = str(challenge_definition["target"])
 
-    # derive eval window (first ref date minus lowest horizon, last ref date plus highest horizon)
+    # derive eval window 
+    # (first ref date minus lowest horizon, last ref date plus highest horizon)
     challenge_reference_dates = challenge_definition.get("reference_dates")
     reference_date_series = pd.to_datetime(challenge_reference_dates)
     horizon_offsets = [
@@ -279,15 +380,15 @@ def _score_from_challenge_library(
         quantiles,
         filtered_facets_by_file=filtered_facets_by_file,
     )
-    write_excluded_files_summary(
+    summary_arguments = dict(
         excluded_files=excluded_files,
         target=target,
         reference_dates=challenge_reference_dates,
         horizons=challenge_definition["horizons"],
         quantiles=quantiles,
         locations=challenge_definition["locations"],
-        output_dir=output_dir,
     )
+    summary = format_excluded_files_summary(**summary_arguments)
 
     for model_name_key, forecast_df in model_dict.items():
         if "_source_file" in forecast_df.columns:
@@ -308,85 +409,24 @@ def _score_from_challenge_library(
         columns=["target"]
     )
 
-    # score and save scoring file
+    # score forecasts; persistence is handled by ScoreResult.save().
     logger.info("Scoring model data...")
     scorer = ScoringBridge(baseline_model=baseline_model)
     scores = scorer.score_forecasts(df)
-    _write_output_csv("scores", scores, output_dir)
 
-    # build scorecard using custom function registry (and save)
+    # build the scorecard using the custom function registry
     scorecard_results = custom_scorecard(
         model_name=model_name,
         scorecard_function_names=challenge_definition["scorecard_function"],
         score_file=scores,
     )
-    _write_output_csv("scorecard", scorecard_results, output_dir)
-    logger.info(f"Find output at {output_dir}")
-    logger.info("See summary.md for information on your model data.")
+    scorecard = pd.DataFrame([scorecard_results])
 
-
-def score(
-    challenge_name: Optional[str] = None,
-    model_data_path: Optional[str] = None,
-    model_name: Optional[str] = None,
-    output_path: Optional[str] = None,
-    config_path: Optional[str] = None,
-) -> None:
-    """
-    Main execution function for the `epibench score` pipeline.
-    """
-    using_library_challenge = challenge_name is not None or model_data_path is not None
-    using_config = config_path is not None
-
-    # fail if both --model-data-path and --config-path are provided
-    if using_library_challenge and using_config:
-        raise click.UsageError("Use either a library challenge with --model-data-path or --config-path, not both.")
-
-    if using_config:
-        # fail if challenge name or --model-data-path is given with --config-path
-        if (
-            challenge_name is not None
-            or model_data_path is not None
-            or model_name is not None
-            or output_path is not None
-        ):
-            raise click.UsageError(
-                "When using --config-path, do not provide challenge-name, "
-                "--model-data-path, --model-name, or --output-path."
-            )
-        # othwerise, score normally
-        _score_from_config(config_path=config_path)
-        return
-
-    # fail if no --model-data-path, challenge name, OR --config-path
-    if challenge_name is None and model_data_path is None:
-        raise click.UsageError(
-            "Provide either <challenge-name> with --model-data-path or --config-path."
-        )
-    # fail if no challenge name with --model-data-path
-    if challenge_name is None:
-        raise click.UsageError(
-            "A library challenge name is required when using --model-data-path."
-        )
-    # fail if no --model-path with challenge name
-    if model_data_path is None:
-        raise click.UsageError(
-            "--model-data-path is required when using a library challenge."
-        )
-    if model_name is None:
-        raise click.UsageError(
-            "--model-name is required when using a library challenge."
-        )
-    # fail if no --output-path wih challenge name
-    if output_path is None:
-        raise click.UsageError(
-            "--output-path is required when using a library challenge."
-        )
-    # otherwise, score score normally + build scorecard 
-    _score_from_challenge_library(
-        challenge_name=challenge_name,
-        model_data_path=model_data_path,
-        model_name=model_name,
-        output_path=output_path,
-    )
     logger.info("Process executed successfully to end 🎉.")
+    return ScoreResult(
+        mode="challenge",
+        scores=scores,
+        scorecard=scorecard,
+        summary=summary,
+        excluded_files=frozenset(excluded_files),
+    )

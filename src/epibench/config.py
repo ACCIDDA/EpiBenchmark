@@ -1,16 +1,149 @@
 """Validate YAML configuration file input."""
 
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
 import logging
-from datetime import datetime, timedelta
 from pathlib import Path
 
 import yaml
 
 from .hub_date_utils import validate_create_dates_against_hub_rounds
 from .path_utils import establish_hub_path, resolve_output_dir, resolve_path
-from .scoring_summary import FILTER_SUMMARY_FILENAME
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ScoreParameters:
+    """Normalized inputs shared by YAML and programmatic scoring."""
+
+    hub_path: Path
+    evaluation_start_date: datetime
+    evaluation_end_date: datetime
+    target: str
+    model_info: dict[str, list[Path]]
+    include_models: list[str]
+    baseline_model: str
+
+
+def _score_date(value: str | date | datetime) -> datetime:
+    """Normalize an API or YAML evaluation date to a naive datetime."""
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min)
+    return datetime.strptime(value, "%Y-%m-%d")
+
+
+def build_score_parameters(
+    *,
+    hub_path: str | Path,
+    evaluation_start_date: str | date | datetime,
+    evaluation_end_date: str | date | datetime,
+    target: str,
+    models: Mapping[str, str | Path | Sequence[str | Path]],
+    baseline_model: str,
+    include_models: Sequence[str] | None = None,
+    base_dir: str | Path | None = None,
+) -> ScoreParameters:
+    """Validate and normalize inputs used by the standard scoring workflow.
+
+    ``base_dir`` is used by YAML configuration parsing so relative paths remain
+    relative to the configuration file. Direct API calls omit it and resolve
+    relative paths from the current working directory.
+    """
+    resolved_hub_path = establish_hub_path(hub_path, base_dir=base_dir)
+
+    try:
+        start = _score_date(evaluation_start_date)
+        end = _score_date(evaluation_end_date)
+    except (ValueError, TypeError) as error:
+        raise ValueError(
+            "Invalid date format. Dates must be valid and formatted as YYYY-MM-DD. "
+            f"Error: {error}"
+        ) from error
+
+    current_date = datetime.now()
+    if start > current_date or end > current_date:
+        raise ValueError(
+            "Date Range Error: Evaluation dates cannot be in the future. "
+            f"Received:\nstart: {evaluation_start_date}\nend: {evaluation_end_date}."
+        )
+    if end < start + timedelta(days=7):
+        raise ValueError(
+            f"Date Range Error: End date ({evaluation_end_date}) "
+            f"must be at least 7 days AFTER start date ({evaluation_start_date})."
+        )
+
+    if not isinstance(baseline_model, str):
+        raise ValueError(
+            "`baseline_model` key must be a string/character. "
+            f"Received: {type(baseline_model)}"
+        )
+
+    if include_models is None:
+        normalized_include_models = []
+    elif isinstance(include_models, Sequence) and not isinstance(
+        include_models, (str, bytes)
+    ):
+        normalized_include_models = list(include_models)
+    else:
+        raise ValueError(
+            f"`include_models` key must be a list. Received: {type(include_models)}"
+        )
+    logger.info("Adding required baseline model %s to models to process.", baseline_model)
+    normalized_include_models.append(baseline_model)
+
+    if not isinstance(models, Mapping) or not models:
+        raise ValueError(
+            "The 'models' key must be a non-empty dictionary of {'name': 'path'}."
+        )
+
+    model_info: dict[str, list[Path]] = {}
+    for model_name, model_sources in models.items():
+        if isinstance(model_sources, (str, Path)):
+            sources = [model_sources]
+        elif isinstance(model_sources, Sequence):
+            sources = list(model_sources)
+        else:
+            sources = [model_sources]
+
+        data_files_list: list[Path] = []
+        for source in sources:
+            try:
+                resolved_source = resolve_path(source, base_dir=base_dir)
+            except TypeError as error:
+                raise ValueError(
+                    f"Path specified for '{model_name}' must be a path. Received: {source}"
+                ) from error
+            if not resolved_source.exists():
+                raise FileNotFoundError(
+                    f"Path specified for '{model_name}' does not exist. Path {source}"
+                )
+            if resolved_source.suffix.lower() == ".csv":
+                data_files_list.append(resolved_source)
+            elif resolved_source.is_dir():
+                data_files_list.extend(resolved_source.glob("*.csv"))
+            else:
+                raise ValueError(
+                    f"Path specified for '{model_name}' must either point to a "
+                    "directory of .csv files, or a single .csv file. "
+                    f"Received: {source}"
+                )
+        if not data_files_list:
+            raise ValueError("Found no CSV files in path(s) in config `models` key.")
+        model_info[model_name] = data_files_list
+
+    return ScoreParameters(
+        hub_path=resolved_hub_path,
+        evaluation_start_date=start,
+        evaluation_end_date=end,
+        target=target,
+        model_info=model_info,
+        include_models=normalized_include_models,
+        baseline_model=baseline_model,
+    )
 
 
 class Config:
@@ -258,85 +391,24 @@ class Config:
         if missing := (required_keys - set(self.config)):
             raise KeyError(f"Config file is missing required keys: {missing}")
         
-        # `hub-path`-specific key check
-        self.hub_path = establish_hub_path(self.config["hub_path"], base_dir=self.base_dir)
-        
-        # `evaluation_start_date` and `evaluation_end_date`-specific key check
-        # ensure they can be coerced as dates
-        try:
-            start = datetime.strptime(self.config['evaluation_start_date'], "%Y-%m-%d")
-            end = datetime.strptime(self.config['evaluation_end_date'], "%Y-%m-%d")
-        except (ValueError, TypeError) as e:
-            raise ValueError(
-                f"Invalid date format. Dates must be valid and formatted as YYYY-MM-DD. Error: {e}"
-            )
-        # ensure neither date is in the future
-        current_date = datetime.now()
-        if start > current_date or end > current_date:
-            raise ValueError(
-                f"Date Range Error: Evaluation dates cannot be in the future. "
-                f"Received:\nstart: {self.config['evaluation_start_date']}\nend: {self.config['evaluation_end_date']}."
-            )
-        # ensure end is at least 7 days after start
-        if end < start + timedelta(days=7):
-            raise ValueError(
-                f"Date Range Error: End date ({self.config['evaluation_end_date']}) "
-                f"must be at least 7 days AFTER start date ({self.config['evaluation_start_date']})."
-            )
-        self.evaluation_start_date = start
-        self.evaluation_end_date = end
-
-        # `target` key (no checks for now)
-        self.target = self.config['target']
-
-        # `baseline_model`-specific key check
-        if not isinstance(self.config["baseline_model"], str):
-            raise ValueError(f"`baseline_model` key must be a string/character. Received: {type(self.config['baseline_model'])}")
-        self.baseline_model = self.config["baseline_model"]
-
-        # `include_models`-specific key check
-        include_models = []
-        if "include_models" in self.config:
-            if not isinstance(self.config['include_models'], list):
-                raise ValueError(f"`include_models` key must be a list. Received: {type(self.config['include_models'])}")
-            for model in self.config['include_models']:
-                include_models.append(model)
-            logger.info(f"Adding required baseline model {self.baseline_model} to models to process.")
-            include_models.append(self.baseline_model)
-            self.include_models = include_models
-        else:
-            logger.info(f"Adding required baseline model {self.baseline_model} to models to process.")
-            include_models.append(self.baseline_model)
-            self.include_models = include_models
-        
-        # `models`-specific key check
-        if not isinstance(self.config['models'], dict) or not self.config['models']:
-            raise ValueError("The 'models' key must be a non-empty dictionary of {'name': 'path'}.")
-        model_info = {}
-        for model_name, path in self.config['models'].items():
-            data_files_list = []
-            p = resolve_path(path, base_dir=self.base_dir)
-            if not p.exists(): # if path doesn't exist, throw an error
-                raise FileNotFoundError(f"Path specified for '{model_name}' does not exist. Path {path}")
-            elif p.suffix.lower() == '.csv': # if it's just one csv path, add it 
-                data_files_list.append(p)
-            elif p.is_dir(): # if it's a dir path, add all csvs
-                data_files_list.extend(p.glob('*.csv'))
-            else: # if none, raise error
-                raise ValueError(
-                    f"Path specified for '{model_name}' must either point to a "
-                    f"directory of .csv files, or a single .csv file. "
-                    f"Received: {path}"
-                )
-            if len(data_files_list) < 1:
-                raise ValueError(f"Found no CSV files in path(s) in config `models` key.")
-            model_info[model_name] = data_files_list
-        self.model_info = model_info
-
-        
-        # `output_path`-specific key check
-        self.output_path = resolve_output_dir(
+        self.score_parameters = build_score_parameters(
+            hub_path=self.config["hub_path"],
+            evaluation_start_date=self.config["evaluation_start_date"],
+            evaluation_end_date=self.config["evaluation_end_date"],
+            target=self.config["target"],
+            models=self.config["models"],
+            baseline_model=self.config["baseline_model"],
+            include_models=self.config.get("include_models"),
+            base_dir=self.base_dir,
+        )
+        self.hub_path = self.score_parameters.hub_path
+        self.evaluation_start_date = self.score_parameters.evaluation_start_date
+        self.evaluation_end_date = self.score_parameters.evaluation_end_date
+        self.target = self.score_parameters.target
+        self.model_info = self.score_parameters.model_info
+        self.include_models = self.score_parameters.include_models
+        self.baseline_model = self.score_parameters.baseline_model
+        self.output_path = resolve_path(
             self.config["output_path"],
             base_dir=self.base_dir,
-            files_to_save=["EpiBenchmark_scores.csv", FILTER_SUMMARY_FILENAME],
         )
