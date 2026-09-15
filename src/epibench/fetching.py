@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 import click
 import pandas as pd
 
-from .challenge import Challenge
+from .challenge import Challenge, Task
 from .library import is_published, load_challenge
 
 logger = logging.getLogger(__name__)
@@ -40,8 +40,8 @@ def fetch_challenge(challenge_name: str) -> Challenge:
     The challenge is downloaded into temporary storage, and no challenge files
     are retained on the user's machine. The returned challenge contains the
     contents of ``instructions.md`` and its vintaged ground-truth tasks. Tasks
-    follow the order in ``task_list.csv``; each item maps one reference date to
-    its ground-truth DataFrame.
+    follow the order in ``task_list.csv``; each task's ``name`` is its reference
+    date and its ``gt_df`` is the corresponding ground-truth DataFrame.
 
     Args:
         challenge_name: name of a published challenge in the EpiBenchmark challenge library
@@ -108,11 +108,11 @@ def _load_fetched_challenge(challenge_dir: Path) -> Challenge:
 
     return Challenge(
         instructions=instructions_path.read_text(encoding="utf-8"),
-        tasks=_load_ground_truth_data(challenge_dir),
+        tasks=_load_ground_truth_tasks(challenge_dir),
     )
 
 
-def _load_ground_truth_data(challenge_dir: Path) -> list[dict[str, pd.DataFrame]]:
+def _load_ground_truth_tasks(challenge_dir: Path) -> list[Task]:
     """Load the ground-truth files referenced by a fetched task list."""
     task_list_path = challenge_dir / "task_list.csv"
     if not task_list_path.is_file():
@@ -147,7 +147,7 @@ def _load_ground_truth_data(challenge_dir: Path) -> list[dict[str, pd.DataFrame]
         )
 
     challenge_root = challenge_dir.resolve()
-    ground_truth_data: list[dict[str, pd.DataFrame]] = []
+    tasks: list[Task] = []
     for task in task_list.itertuples(index=False):
         reference_date = task.date.strip()
         relative_path = Path(task.path_to_gt.strip())
@@ -178,9 +178,9 @@ def _load_ground_truth_data(challenge_dir: Path) -> list[dict[str, pd.DataFrame]
             dtype={"location": str},
             low_memory=False,
         )
-        ground_truth_data.append({reference_date: ground_truth})
+        tasks.append(Task(name=reference_date, gt_df=ground_truth))
 
-    return ground_truth_data
+    return tasks
 
 
 def _get_json(url: str) -> dict:

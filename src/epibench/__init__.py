@@ -2,7 +2,7 @@ __version__ = "0.0.1"
 __author__ = "ACCIDDA"
 
 from .scoring import ScoreResult, score, score_challenge
-from .challenge import Challenge
+from .challenge import Challenge, Task
 from .creating import create
 from .fetching import fetch_challenge
 from .library import list_challenges
@@ -21,6 +21,7 @@ def __getattr__(name: str):
 __all__ = [
     "ScoreResult",
     "Challenge",
+    "Task",
     "__author__",
     "__version__",
     "create",

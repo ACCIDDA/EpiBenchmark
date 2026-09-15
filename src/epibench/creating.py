@@ -10,7 +10,7 @@ from typing import Literal
 
 import pandas as pd
 
-from .challenge import Challenge, _save_tasks
+from .challenge import Challenge, Task, _save_tasks
 from .config import Config, CreateParameters, build_create_parameters
 from .create_ground_truth import gt_from_hub
 
@@ -70,10 +70,10 @@ def _create_challenge(parameters: CreateParameters) -> Challenge:
         vintaging_method=parameters.vintaging_method,
     )
 
-    tasks: list[dict[str, pd.DataFrame]] = []
+    tasks: list[Task] = []
     for reference_date, ground_truth in ground_truth_by_date.items():
         if isinstance(ground_truth, pd.DataFrame):
-            tasks.append({reference_date: ground_truth})
+            tasks.append(Task(name=reference_date, gt_df=ground_truth))
         else:
             logger.warning(
                 "NOTICE: No ground truth data found for target %r for date %s.",

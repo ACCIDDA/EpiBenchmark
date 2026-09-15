@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class Task:
+    """Ground truth for one challenge reference date."""
+
+    name: str
+    gt_df: pd.DataFrame
+
+
+@dataclass
 class Challenge:
     """
     Instructions* and ground-truth tasks for a fetched or created challenge.
@@ -23,7 +31,7 @@ class Challenge:
     """
 
     instructions: str | None
-    tasks: list[dict[str, pd.DataFrame]]
+    tasks: list[Task]
 
     def save(self, output_path: str | Path | None = None) -> "Challenge":
         """Save every ground-truth task beneath ``<output_path>/gt/``.
@@ -38,25 +46,26 @@ class Challenge:
 
 
 def _validate_tasks_for_saving(
-    tasks: list[dict[str, pd.DataFrame]],
-) -> list[tuple[str, pd.DataFrame]]:
+    tasks: list[Task],
+) -> list[Task]:
     """Validate mutable challenge tasks before creating any output files."""
     if not isinstance(tasks, list):
         raise TypeError("Challenge tasks must be a list.")
     if not tasks:
         raise ValueError("Challenge does not contain any ground-truth tasks to save.")
 
-    tasks_to_save: list[tuple[str, pd.DataFrame]] = []
+    tasks_to_save: list[Task] = []
     seen_dates: set[str] = set()
     for task_number, task in enumerate(tasks, start=1):
-        if not isinstance(task, dict) or len(task) != 1:
-            raise ValueError(
-                f"Challenge task {task_number} must be a dictionary containing exactly one date."
+        if not isinstance(task, Task):
+            raise TypeError(
+                f"Challenge task {task_number} must be a Task instance."
             )
 
-        reference_date, ground_truth = next(iter(task.items()))
+        reference_date = task.name
+        ground_truth = task.gt_df
         if not isinstance(reference_date, str):
-            raise TypeError(f"Challenge task {task_number}'s date must be a string.")
+            raise TypeError(f"Challenge task {task_number}'s name must be a string.")
         try:
             parsed_date = date.fromisoformat(reference_date)
         except ValueError as error:
@@ -77,13 +86,13 @@ def _validate_tasks_for_saving(
             )
 
         seen_dates.add(reference_date)
-        tasks_to_save.append((reference_date, ground_truth))
+        tasks_to_save.append(task)
 
     return tasks_to_save
 
 
 def _save_tasks(
-    tasks: list[dict[str, pd.DataFrame]],
+    tasks: list[Task],
     *,
     output_dir: Path,
     include_task_list: bool,
@@ -107,12 +116,13 @@ def _save_tasks(
     gt_dir.mkdir()
     try:
         task_rows: list[dict[str, str]] = []
-        for reference_date, ground_truth in tasks_to_save:
+        for task in tasks_to_save:
+            reference_date = task.name
             date_dir = gt_dir / reference_date
             date_dir.mkdir()
             filename = f"{reference_date.replace('-', '')}_gt.csv"
             ground_truth_path = date_dir / filename
-            ground_truth.to_csv(ground_truth_path, index=False)
+            task.gt_df.to_csv(ground_truth_path, index=False)
             task_rows.append(
                 {
                     "date": reference_date,
