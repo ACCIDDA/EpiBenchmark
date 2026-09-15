@@ -49,7 +49,7 @@ def create(config_path: str | None) -> None:
     short_help="List all challenges available in the EpiBenchmark library.",
     help=(
         "List every challenge bundled in the EpiBenchmark challenge library, "
-        "along with its Zenodo availability status."
+        "along with its Zenodo doi."
     ),
 )
 def list_challenges() -> None:
@@ -81,6 +81,7 @@ def fetch(challenge_id: str, output_path: str | None) -> None:
     """Run the EpiBench fetch pipeline."""
     from .fetch import fetch as run_fetch
 
+    logging.basicConfig(level=logging.INFO)
     run_fetch(challenge_id=challenge_id, output_path=output_path)
 
 
