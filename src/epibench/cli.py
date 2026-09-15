@@ -38,9 +38,10 @@ def cli(ctx: click.Context) -> None:
 )
 def create(config_path: str | None) -> None:
     """Run the EpiBenchmark create pipeline."""
-    from .create import create as run_create
+    from .creating import _create_from_config
 
-    run_create(config_path=config_path)
+    logging.basicConfig(level=logging.INFO)
+    _create_from_config(config_path=config_path)
 
 
 # epibench list

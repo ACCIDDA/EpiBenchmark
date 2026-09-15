@@ -2,7 +2,9 @@ __version__ = "0.0.1"
 __author__ = "ACCIDDA"
 
 from .scoring import ScoreResult, score, score_challenge
-from .fetching import Challenge, fetch_challenge
+from .challenge import Challenge
+from .creating import create
+from .fetching import fetch_challenge
 from .library import list_challenges
 
 
@@ -21,6 +23,7 @@ __all__ = [
     "Challenge",
     "__author__",
     "__version__",
+    "create",
     "fetch_challenge",
     "list_challenges",
     "plot",

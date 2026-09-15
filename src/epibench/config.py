@@ -1,10 +1,11 @@
 """Validate YAML configuration file input."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date, datetime, time, timedelta
 import logging
 from pathlib import Path
+from typing import Literal
 
 import yaml
 
@@ -25,6 +26,216 @@ class ScoreParameters:
     model_info: dict[str, list[Path]]
     include_models: list[str]
     baseline_model: str
+
+
+@dataclass(frozen=True)
+class CreateParameters:
+    """Normalized inputs shared by YAML and programmatic creation."""
+
+    hub_path: Path
+    target: str
+    dates: list[str]
+    gt_cutoff_dates: list[str]
+    ground_truth_file: str
+    observed_column_name: str
+    location_column_name: str
+    date_column_name: str
+    vintaging: bool
+    vintaging_method: Literal["as_of", "checkout"] | None
+    vintaging_offset: int
+
+
+def _normalize_create_dates(dates: dict[str, object] | list[object]) -> list[str]:
+    """Validate and expand the create pipeline's list-or-range date input."""
+    if isinstance(dates, dict):
+        required_date_keys = {"start_date", "end_date", "freq"}
+        if missing_keys := required_date_keys.difference(dates):
+            raise KeyError(
+                f"The `dates` key dictionary is missing required keys {missing_keys}"
+            )
+        try:
+            start_dt = datetime.strptime(str(dates["start_date"]), "%Y-%m-%d")
+            end_dt = datetime.strptime(str(dates["end_date"]), "%Y-%m-%d")
+        except (ValueError, TypeError) as error:
+            raise ValueError(
+                "Invalid date format in `dates` key dictionary. Dates must be "
+                f"YYYY-MM-DD. Error: {error}"
+            ) from error
+        if start_dt > end_dt:
+            raise ValueError(
+                f"`start_date` ({start_dt.date()}) cannot be after "
+                f"`end_date` ({end_dt.date()})."
+            )
+
+        freq_str = str(dates["freq"]).strip().lower()
+        freq_parts = freq_str.split()
+        if len(freq_parts) != 2:
+            raise ValueError(
+                f"Invalid `freq` format: '{freq_str}'. Expected format is a positive "
+                "integer followed by 'week' or 'weeks' (e.g., '1 week', '2 weeks')."
+            )
+        try:
+            frequency = int(freq_parts[0])
+            if frequency <= 0:
+                raise ValueError
+        except ValueError as error:
+            raise ValueError(
+                "Frequency amount must be a positive integer. "
+                f"Received: '{freq_parts[0]}'"
+            ) from error
+        if freq_parts[1] not in {"week", "weeks"}:
+            raise ValueError(
+                f"Invalid frequency unit: '{freq_parts[1]}'. Only 'week' or "
+                "'weeks' are permitted for this pipeline."
+            )
+
+        normalized_dates = []
+        current_date = start_dt
+        while current_date <= end_dt:
+            normalized_dates.append(current_date.strftime("%Y-%m-%d"))
+            current_date += timedelta(weeks=frequency)
+    elif isinstance(dates, list):
+        normalized_dates = []
+        for item in dates:
+            try:
+                normalized_dates.append(
+                    datetime.strptime(str(item), "%Y-%m-%d").strftime("%Y-%m-%d")
+                )
+            except (ValueError, TypeError) as error:
+                raise ValueError(
+                    f"Invalid date format of date {item} in `dates` list. Dates "
+                    f"must be YYYY-MM-DD. Error: {error}"
+                ) from error
+        normalized_dates = sorted(set(normalized_dates))
+    else:
+        raise ValueError(
+            "Config `dates` key must either be dictionary (with keys `start_date`, "
+            "`end_date`, `freq`), or a list of dates."
+        )
+
+    if not normalized_dates:
+        raise ValueError("`dates` must contain at least one date.")
+    latest_date = datetime.strptime(normalized_dates[-1], "%Y-%m-%d").date()
+    today = datetime.today().date()
+    if latest_date > today:
+        raise ValueError(
+            "Config `dates` key has date(s) that extend into the future. Latest "
+            f"date must be on or before today: {today}"
+        )
+    return normalized_dates
+
+
+def build_create_parameters(
+    *,
+    hub_path: str | Path,
+    target: str,
+    dates: dict[str, object] | list[object],
+    ground_truth_file: str,
+    observed_column_name: str,
+    location_column_name: str,
+    date_column_name: str,
+    vintaging: bool | str,
+    vintaging_method: str | None = None,
+    vintaging_offset: int | None = None,
+    base_dir: str | Path | None = None,
+    allow_config_coercions: bool = False,
+) -> CreateParameters:
+    """Validate and normalize inputs used by the create workflow."""
+    resolved_hub_path = establish_hub_path(hub_path, base_dir=base_dir)
+
+    if not isinstance(target, str):
+        raise ValueError(f"`target` must be a string. Received: {type(target)}")
+    if not target:
+        raise ValueError("`target` must be a non-empty string.")
+
+    relative_gt_path = Path(str(ground_truth_file))
+    if relative_gt_path.is_absolute() or ".." in relative_gt_path.parts:
+        raise ValueError(
+            "`ground_truth_file` must be a relative path contained within the hub repository."
+        )
+    if relative_gt_path.suffix.lower() not in {".csv", ".parquet"}:
+        raise ValueError("`ground_truth_file` must point to a .csv or .parquet file.")
+
+    column_names = {
+        "observed_column_name": observed_column_name,
+        "location_column_name": location_column_name,
+        "date_column_name": date_column_name,
+    }
+    for key, value in column_names.items():
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"`{key}` must be a non-empty string.")
+
+    normalized_dates = _normalize_create_dates(dates)
+
+    if isinstance(vintaging, bool):
+        normalized_vintaging = vintaging
+    elif (
+        allow_config_coercions
+        and isinstance(vintaging, str)
+        and vintaging.lower() in {"true", "false"}
+    ):
+        normalized_vintaging = vintaging.lower() == "true"
+    else:
+        raise ValueError(f"Config `vintaging` key must be a boolean. Received '{vintaging}'")
+
+    normalized_method: Literal["as_of", "checkout"] | None
+    normalized_offset: int
+    if normalized_vintaging:
+        if vintaging_method is None:
+            raise ValueError(
+                "`vintaging_method` key must be included if `vintaging` is set to TRUE.\n"
+                "Options are:\nvintaging_method: 'as_of'\nvintaging_method: 'checkout'"
+            )
+        if not isinstance(vintaging_method, str):
+            raise ValueError(
+                "`vintaging_method` key must be of type 'str'. "
+                f"Received: {type(vintaging_method)}"
+            )
+        method = (
+            vintaging_method.lower()
+            if allow_config_coercions
+            else vintaging_method
+        )
+        if method not in {"as_of", "checkout"}:
+            raise ValueError(
+                "`vintaging_method` must be one of ['as_of', 'checkout']. "
+                f"Received: {vintaging_method}"
+            )
+        normalized_method = method
+
+        if vintaging_offset is None:
+            raise ValueError(
+                "`vintaging_offset` key must be included if `vintaging` is set to TRUE. "
+                "Please specify a positive integer, negative integer, or 0."
+            )
+        if isinstance(vintaging_offset, bool) or not isinstance(vintaging_offset, int):
+            raise ValueError(
+                "`vintaging_offset` must be of type 'int' (positive, negative, or 0). "
+                f"Received: {type(vintaging_offset)}"
+            )
+        normalized_offset = vintaging_offset
+    else:
+        normalized_method = None
+        normalized_offset = 0
+
+    normalized_dates, cutoff_dates = validate_create_dates_against_hub_rounds(
+        hub_path=resolved_hub_path,
+        requested_dates=normalized_dates,
+        gt_cutoff_offset=normalized_offset,
+    )
+    return CreateParameters(
+        hub_path=resolved_hub_path,
+        target=target,
+        dates=normalized_dates,
+        gt_cutoff_dates=cutoff_dates,
+        ground_truth_file=str(relative_gt_path),
+        observed_column_name=observed_column_name,
+        location_column_name=location_column_name,
+        date_column_name=date_column_name,
+        vintaging=normalized_vintaging,
+        vintaging_method=normalized_method,
+        vintaging_offset=normalized_offset,
+    )
 
 
 def _score_date(value: str | date | datetime) -> datetime:
@@ -201,166 +412,42 @@ class Config:
         """
 
         required_keys = {
-        "hub_path", 
-        "challenge_name",
-        "target",
-        "ground_truth_file",
-        "observed_column_name",
-        "location_column_name",
-        "date_column_name",
-        "dates", 
-        "vintaging", 
-        "output_path"
-        }
-        if missing := (required_keys - set(self.config)):
-            raise KeyError(f"Config file is missing required keys: {missing}")
-        
-        # `hub-path`-specific key check
-        self.hub_path = establish_hub_path(self.config["hub_path"], base_dir=self.base_dir)
-        self.challenge_name = self.config.get("challenge_name")
-
-        #`challenge_name`-specific key check (no checks right now)
-        # ensure it is a str
-        self.challenge_name = str(self.config["challenge_name"])
-
-        # `target`-specific key check
-        if not isinstance(self.config["target"], str):
-            raise ValueError(
-                f"`target` must be a string. Received: {type(self.config['target'])}"
-            )
-        if not self.config["target"]:
-            raise ValueError("`target` must be a non-empty string.")
-        self.target = self.config["target"]
-        
-        # `ground_truth_file`-specific key check
-        ground_truth_file = Path(str(self.config["ground_truth_file"]))
-        if ground_truth_file.is_absolute() or ".." in ground_truth_file.parts:
-            raise ValueError(
-                "`ground_truth_file` must be a relative path contained within the hub repository."
-            )
-        if ground_truth_file.suffix.lower() not in {".csv", ".parquet"}:
-            raise ValueError("`ground_truth_file` must point to a .csv or .parquet file.")
-        self.ground_truth_file = str(ground_truth_file)
-
-        for key in (
+            "hub_path",
+            "challenge_name",
+            "target",
+            "ground_truth_file",
             "observed_column_name",
             "location_column_name",
             "date_column_name",
-        ):
-            value = self.config[key]
-            if not isinstance(value, str) or not value:
-                raise ValueError(f"`{key}` must be a non-empty string.")
-            setattr(self, key, value)
+            "dates",
+            "vintaging",
+            "output_path",
+        }
+        if missing := (required_keys - set(self.config)):
+            raise KeyError(f"Config file is missing required keys: {missing}")
 
-        # `dates` -specific key check 
-        dates = self.config['dates'] 
-        if isinstance(dates, dict):
-            # check for all keys
-            required_date_keys = {"start_date", "end_date", "freq"}
-            if missing_keys := (required_date_keys - set(dates)):
-                raise KeyError(f"The `dates` key dictionary is missing required keys {missing_keys}")
-            # check date formats
-            try:
-                start_dt = datetime.strptime(str(dates['start_date']), "%Y-%m-%d")
-                end_dt = datetime.strptime(str(dates['end_date']), "%Y-%m-%d")
-            except (ValueError, TypeError) as e:
-                raise ValueError(f"Invalid date format in `dates` key dictionary. Dates must be YYYY-MM-DD. Error: {e}")
-            if start_dt > end_dt:
-                raise ValueError(f"`start_date` ({start_dt.date()}) cannot be after `end_date` ({end_dt.date()}).")
-            # freq key checks
-            freq_str = str(dates['freq']).strip().lower()
-            freq_parts = freq_str.split()
-            if len(freq_parts) != 2:
-                raise ValueError(
-                    f"Invalid `freq` format: '{freq_str}'. "
-                    "Expected format is a positive integer followed by 'week' or 'weeks' (e.g., '1 week', '2 weeks')."
-                )
-            try:
-                freq_val = int(freq_parts[0])
-                if freq_val <= 0:
-                    raise ValueError
-            except ValueError:
-                raise ValueError(f"Frequency amount must be a positive integer. Received: '{freq_parts[0]}'")
-            freq_unit = freq_parts[1]
-            if freq_unit not in ["week", "weeks"]:
-                raise ValueError(
-                    f"Invalid frequency unit: '{freq_unit}'. "
-                    "Only 'week' or 'weeks' are permitted for this pipeline."
-                )
-            delta = timedelta(weeks=freq_val)
-            self.dates = []
-            curr_dt = start_dt
-            while curr_dt <= end_dt:
-                self.dates.append(curr_dt.strftime("%Y-%m-%d"))
-                curr_dt += delta
-
-        elif isinstance(dates, list):
-            dates_list = []
-            for item in dates:
-                try:
-                    valid_date = datetime.strptime(str(item), "%Y-%m-%d").strftime("%Y-%m-%d")
-                    dates_list.append(valid_date)
-                except (ValueError, TypeError) as e:
-                    raise ValueError(f"Invalid date format of date {item} in `dates` list. Dates must be YYYY-MM-DD. Error: {e}")
-            self.dates = sorted(list(set(dates_list)))
-
-        else:
-            raise ValueError(
-                f"Config `dates` key must either be dictionary (with keys `start_date`, `end_date`, `freq`), "
-                f"or a list of dates."
-            )
-        # ensure dates don't extend into the future
-        latest_date_obj = datetime.strptime(self.dates[-1], "%Y-%m-%d").date() 
-        today = datetime.today().date()
-        if latest_date_obj > today:
-            raise ValueError(f"Config `dates` key has date(s) that extend into the future. Latest date must be on or before today: {today}")
-
-        # `vintaging` -specific key check, with `vintaging_method`
-        vintaging = self.config['vintaging']
-        if not isinstance(vintaging, bool):
-            if not (isinstance(vintaging, str) and vintaging.lower() in ['true', 'false']):
-                raise ValueError(f"Config `vintaging` key must be a boolean. Received '{vintaging}'")
-        self.vintaging = vintaging if isinstance(vintaging, bool) else vintaging.lower() == 'true'
-        # if we are doing vintaging, ensure the vintaging_method and vintaging_offset are set and valid
-        if (self.vintaging):
-            # vintaging_method
-            if 'vintaging_method' not in self.config:
-                raise ValueError(
-                    "`vintaging_method` key must be included if `vintaging` is set to TRUE.\n"
-                    "Options are:\nvintaging_method: 'as_of'\nvintaging_method: 'checkout'"
-                )
-            else:
-                if not isinstance(self.config["vintaging_method"], str):
-                    raise ValueError(f"`vintaging_method` key must be of type 'str'. Received: {type(self.config['vintaging_method'])}")
-                if not self.config["vintaging_method"].lower() in ["as_of", "checkout"]:
-                    raise ValueError(f"`vintaging_method` must be one of ['as_of', 'checkout']. Received: {self.config['vintaging_method']}")
-            self.vintaging_method = self.config["vintaging_method"]
-            # vintaging_offset
-            if 'vintaging_offset' not in self.config:
-                raise ValueError(
-                    "`vintaging_offset` key must be included if `vintaging` is set to TRUE. "
-                    "Please specify a positive integer, negative integer, or 0."
-                )
-            else:
-                if isinstance(self.config["vintaging_offset"], bool) or not isinstance(self.config["vintaging_offset"], int):
-                    raise ValueError(
-                        f"`vintaging_offset` must be of type 'int' (positive, negative, or 0). "
-                        f"Received: {type(self.config['vintaging_offset'])}"
-                    )
-            self.vintaging_offset = self.config["vintaging_offset"]
-        else: # if we aren't doing vintaging at all, set the appropriate values
-            self.vintaging_method = None
-            self.vintaging_offset = 0 # no vintaging offset for non-vintaged runs (use the date itself)
-
-        self.dates, self.gt_cutoff_dates = (
-            validate_create_dates_against_hub_rounds(
-                hub_path=self.hub_path,
-                requested_dates=self.dates,
-                gt_cutoff_offset=self.vintaging_offset,
-            )
+        self.create_parameters = build_create_parameters(
+            hub_path=self.config["hub_path"],
+            target=self.config["target"],
+            dates=self.config["dates"],
+            ground_truth_file=self.config["ground_truth_file"],
+            observed_column_name=self.config["observed_column_name"],
+            location_column_name=self.config["location_column_name"],
+            date_column_name=self.config["date_column_name"],
+            vintaging=self.config["vintaging"],
+            vintaging_method=self.config.get("vintaging_method"),
+            vintaging_offset=self.config.get("vintaging_offset"),
+            base_dir=self.base_dir,
+            allow_config_coercions=True,
         )
+        for parameter_field in fields(self.create_parameters):
+            setattr(
+                self,
+                parameter_field.name,
+                getattr(self.create_parameters, parameter_field.name),
+            )
 
-        # `output_path`-specific key check 
+        self.challenge_name = str(self.config["challenge_name"])
         self.output_path = resolve_output_dir(
             self.config["output_path"], base_dir=self.base_dir
         )

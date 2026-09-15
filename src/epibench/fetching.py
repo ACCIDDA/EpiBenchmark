@@ -8,8 +8,6 @@ import shutil
 import tempfile
 import zipfile
 from contextlib import nullcontext
-from dataclasses import dataclass
-from datetime import date
 from pathlib import Path
 from typing import Optional
 from urllib.request import Request, urlopen
@@ -17,93 +15,12 @@ from urllib.request import Request, urlopen
 import click
 import pandas as pd
 
+from .challenge import Challenge
 from .library import is_published, load_challenge
 
 logger = logging.getLogger(__name__)
 
 _ZENODO_RECORDS_API = "https://zenodo.org/api/records"
-
-
-@dataclass
-class Challenge:
-    """A fetched challenge's human-readable instructions and ground-truth tasks."""
-
-    instructions: str
-    tasks: list[dict[str, pd.DataFrame]]
-
-    def save(self, output_path: str | Path | None = None) -> "Challenge":
-        """Method to save every ground-truth task .CSV beneath ``<output_path>/gt/<reference_date>/``.
-
-        The destination defaults to the current working directory. Existing
-        ``gt`` paths are never overwritten.
-        """
-        tasks_to_save = _validate_tasks_for_saving(self.tasks)
-        output_dir = Path(output_path or Path.cwd()).expanduser().resolve()
-        gt_dir = output_dir / "gt"
-        if gt_dir.exists():
-            raise FileExistsError(
-                f"'{gt_dir}' already exists; remove it or choose another output_path."
-            )
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-        gt_dir.mkdir()
-        try:
-            for reference_date, ground_truth in tasks_to_save:
-                date_dir = gt_dir / reference_date
-                date_dir.mkdir()
-                filename = f"{reference_date.replace('-', '')}_gt.csv"
-                ground_truth.to_csv(date_dir / filename, index=False)
-        except BaseException:
-            shutil.rmtree(gt_dir, ignore_errors=True)
-            raise
-
-        logger.info("Ground-truth tasks saved to %s", gt_dir)
-        return self
-
-
-def _validate_tasks_for_saving(
-    tasks: list[dict[str, pd.DataFrame]],
-) -> list[tuple[str, pd.DataFrame]]:
-    """Validate mutable challenge tasks before creating any output files."""
-    if not isinstance(tasks, list):
-        raise TypeError("Challenge tasks must be a list.")
-    if not tasks:
-        raise ValueError("Challenge does not contain any ground-truth tasks to save.")
-
-    tasks_to_save: list[tuple[str, pd.DataFrame]] = []
-    seen_dates: set[str] = set()
-    for task_number, task in enumerate(tasks, start=1):
-        if not isinstance(task, dict) or len(task) != 1:
-            raise ValueError(
-                f"Challenge task {task_number} must be a dictionary containing exactly one date."
-            )
-
-        reference_date, ground_truth = next(iter(task.items()))
-        if not isinstance(reference_date, str):
-            raise TypeError(f"Challenge task {task_number}'s date must be a string.")
-        try:
-            parsed_date = date.fromisoformat(reference_date)
-        except ValueError as error:
-            raise ValueError(
-                f"Challenge task {task_number} has an invalid date: {reference_date!r}. "
-                "Dates must use YYYY-MM-DD format."
-            ) from error
-        if parsed_date.isoformat() != reference_date:
-            raise ValueError(
-                f"Challenge task {task_number} has an invalid date: {reference_date!r}. "
-                "Dates must use YYYY-MM-DD format."
-            )
-        if reference_date in seen_dates:
-            raise ValueError(f"Challenge tasks contain duplicate date {reference_date!r}.")
-        if not isinstance(ground_truth, pd.DataFrame):
-            raise TypeError(
-                f"Challenge task {reference_date!r} must contain a pandas DataFrame."
-            )
-
-        seen_dates.add(reference_date)
-        tasks_to_save.append((reference_date, ground_truth))
-
-    return tasks_to_save
 
 
 def fetch(challenge_id: str, output_path: Optional[str] = None) -> None:
