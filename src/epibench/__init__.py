@@ -2,7 +2,7 @@ __version__ = "0.0.1"
 __author__ = "ACCIDDA"
 
 from .scoring import ScoreResult, score, score_challenge
-from .fetch import Challenge, fetch_challenge
+from .fetching import Challenge, fetch_challenge
 from .library import list_challenges
 
 

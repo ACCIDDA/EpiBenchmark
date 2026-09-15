@@ -1,4 +1,4 @@
-"""Download EpiBenchmark challenge data files from Zenodo."""
+"""Download and load EpiBenchmark challenge data from Zenodo."""
 
 from __future__ import annotations
 
