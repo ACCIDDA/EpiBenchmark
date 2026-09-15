@@ -1,8 +1,4 @@
-"""Public Python API and shared implementation for EpiBench scoring.
-
-The functions in this module are used by both the Click command-line interface
-and Python callers.  Scoring logic therefore lives here rather than in the CLI.
-"""
+"""Public Python API and shared implementation for EpiBenchmark scoring."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass

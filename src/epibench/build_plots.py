@@ -44,9 +44,27 @@ COMPONENT_COLORS = {
 
 def load_scores(score_file_path: Path) -> pd.DataFrame:
     """
-    Read the score CSV, validate the expected schema, and coerce plot types.
+    Read a score CSV and pass it through the shared plotting validation.
     """
-    score_df = pd.read_csv(score_file_path, dtype={"location": str})
+    return validate_scores(read_scores(score_file_path))
+
+
+def read_scores(score_file_path: Path) -> pd.DataFrame:
+    """
+    Read a score CSV.
+    Specifically preserves location identifiers as strings.
+    """
+    return pd.read_csv(score_file_path, dtype={"location": str})
+
+
+def validate_scores(score_df: pd.DataFrame) -> pd.DataFrame:
+    """Validate and normalize an in-memory scoring DataFrame for plotting."""
+    if not isinstance(score_df, pd.DataFrame):
+        raise TypeError(
+            f"`score_file` must be a pandas DataFrame. Received: {type(score_df)}"
+        )
+
+    score_df = score_df.copy()
     score_df.columns = [column.lstrip("\ufeff").strip() for column in score_df.columns]
 
     missing_columns = REQUIRED_COLUMNS - set(score_df.columns)
@@ -104,6 +122,7 @@ def load_scores(score_file_path: Path) -> pd.DataFrame:
     return score_df.sort_values(["reference_date", "target_end_date", "location", "model", "horizon"])
 
 
+# assemble the PDF
 def build_summary_figures(score_df: pd.DataFrame) -> list[plt.Figure]:
     """
     Build the three PDF figures from validated score data.
@@ -269,6 +288,8 @@ def _build_reference_date_timeseries_figure(score_df: pd.DataFrame) -> plt.Figur
 def _build_empty_figure(title: str, message: str) -> plt.Figure:
     """
     Create a placeholder figure when a plot cannot be computed from the input.
+    Allows other plots to be built independ of one another. Prevents immediate
+    fail and exit if one plot fails.
     """
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.axis("off")
