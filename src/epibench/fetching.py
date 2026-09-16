@@ -39,7 +39,7 @@ def fetch_challenge(challenge_name: str) -> Challenge:
 
     The challenge is downloaded into temporary storage, and no challenge files
     are retained on the user's machine. The returned challenge contains the
-    contents of ``instructions.md`` and its vintaged ground-truth tasks. Tasks
+    contents of ``instruction.md`` and its vintaged ground-truth tasks. Tasks
     follow the order in ``task_list.csv``; each task's ``name`` is its reference
     date and its ``gt_df`` is the corresponding ground-truth DataFrame.
 
@@ -100,7 +100,7 @@ def _fetch_to_directory(
 
 def _load_fetched_challenge(challenge_dir: Path) -> Challenge:
     """Load the programmatic challenge object from an unpacked challenge folder."""
-    instructions_path = challenge_dir / "instructions.md"
+    instructions_path = challenge_dir / "instruction.md"
     if not instructions_path.is_file():
         raise FileNotFoundError(
             f"Fetched challenge is missing its instructions: {instructions_path}."
