@@ -48,7 +48,7 @@ class ScoreResult:
 
     mode: Literal["standard", "challenge"]
     scores: pd.DataFrame
-    scorecard: Optional[pd.DataFrame]
+    scorecard: Optional[pd.DataFrame] # only present if a challenge scoring run
     summary: str
     excluded_files: frozenset[str]
     output_dir: Optional[Path] = None
