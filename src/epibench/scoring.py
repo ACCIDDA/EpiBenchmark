@@ -56,8 +56,8 @@ class ScoreResult:
     scorecard_path: Optional[Path] = None # only populated if .save() method is used
     summary_path: Optional[Path] = None # only populated if .save() method is used
 
-    def save(self, output_path: str | Path | None = None) -> "ScoreResult":
-        """Save all applicable scoring artifacts and return this result.
+    def save(self, output_path: str | Path | None = None) -> None:
+        """Save all applicable scoring artifacts.
 
         - destination defaults to current working dir (unless output_path is provided)
         - director is created when it did not already exist (mkdir=T)
@@ -89,7 +89,6 @@ class ScoreResult:
         self.scorecard_path = scorecard_path
         self.summary_path = summary_path
         logger.info("Scoring artifacts saved to %s", output_dir)
-        return self
 
 
 def _write_output_csv(

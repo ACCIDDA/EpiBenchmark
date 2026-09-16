@@ -33,7 +33,7 @@ class Challenge:
     instructions: str | None
     tasks: list[Task]
 
-    def save(self, output_path: str | Path | None = None) -> "Challenge":
+    def save(self, output_path: str | Path | None = None) -> None:
         """Save every ground-truth task beneath ``<output_path>/gt/``.
 
         The destination defaults to the current working directory. Existing
@@ -42,7 +42,6 @@ class Challenge:
         output_dir = Path(output_path or Path.cwd()).expanduser().resolve()
         _save_tasks(self.tasks, output_dir=output_dir, include_task_list=False)
         logger.info("Ground-truth tasks saved to %s", output_dir / "gt")
-        return self
 
 
 def _validate_tasks_for_saving(
