@@ -71,8 +71,13 @@ class ScoringGroundTruth:
         # rename `observation` to `observed`
         gt = gt.rename(columns={'observation': 'observed'})
 
-        columns_to_drop = set(COLUMNS_TO_KEEP) - set(gt.columns)
-        gt = gt.drop(columns=columns_to_drop)
+        missing_columns = set(COLUMNS_TO_KEEP) - set(gt.columns)
+        if missing_columns:
+            raise ValueError(
+                "Ground truth data is missing columns required for scoring: "
+                f"{sorted(missing_columns)}."
+            )
+        gt = gt.loc[:, COLUMNS_TO_KEEP]
 
         if gt['observed'].isna().any():
             na_info = gt[gt['observed'].isna()]

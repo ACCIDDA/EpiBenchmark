@@ -35,6 +35,16 @@ logger = logging.getLogger(__name__)
 
 SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash, shoudl be challenge-name
 SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash, should be challenge-name
+FORECAST_COLUMNS_FOR_SCORING = [
+    "model",
+    "reference_date",
+    "target_end_date",
+    "location",
+    "horizon",
+    "target",
+    "quantile_level",
+    "predicted",
+]
 
 
 @dataclass
@@ -123,6 +133,24 @@ def _write_output_csv(
     # save
     output_df.to_csv(output_path, index=False, encoding="utf-8-sig")
     return output_path
+
+
+def _combine_models_for_scoring(
+    model_dict: Mapping[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """Combine models using only columns consumed by the scoring pipeline."""
+    standardized_models = []
+    for model_name, forecast_df in model_dict.items():
+        missing = set(FORECAST_COLUMNS_FOR_SCORING) - set(forecast_df.columns)
+        if missing:
+            raise ValueError(
+                f"Model '{model_name}' is missing columns required for scoring: "
+                f"{sorted(missing)}."
+            )
+        standardized_models.append(
+            forecast_df.loc[:, FORECAST_COLUMNS_FOR_SCORING]
+        )
+    return pd.concat(standardized_models, ignore_index=True)
 
 
 def _resolve_model_info(
@@ -282,7 +310,7 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
         eval_end_date=parameters.evaluation_end_date,
     )
 
-    df = pd.concat(model_dict.values(), ignore_index=True)
+    df = _combine_models_for_scoring(model_dict)
     df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
         columns=["target"]
     )
@@ -400,7 +428,7 @@ def score_challenge(
         eval_end_date=evaluation_end_date,
     )
 
-    df = pd.concat(model_dict.values(), ignore_index=True)
+    df = _combine_models_for_scoring(model_dict)
     df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
         columns=["target"]
     )
