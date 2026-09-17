@@ -8,10 +8,23 @@ general Python port of scoringutils.
 
 from __future__ import annotations
 
+import logging
+import warnings
 from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+
+class ForecastValidationError(ValueError):
+    """Forecast data cannot be scored safely."""
+
+
+class MetricScoringWarning(UserWarning):
+    """One metric could not be calculated while scoring continued."""
+
 
 FORECAST_UNIT_COLUMNS = [
     "model",
@@ -34,13 +47,23 @@ SCORE_COLUMNS = [
 
 
 def _check_columns(data: pd.DataFrame) -> None:
+    if not isinstance(data, pd.DataFrame):
+        raise ForecastValidationError("Forecast data must be a pandas DataFrame.")
+    if data.empty:
+        raise ForecastValidationError("Forecast data must contain at least one row.")
+    if "sample_id" in data.columns and "quantile_level" in data.columns:
+        raise ForecastValidationError(
+            "Forecast data cannot contain both `quantile_level` and `sample_id`."
+        )
     missing = [
         column
         for column in [*FORECAST_UNIT_COLUMNS, *REQUIRED_COLUMNS]
         if column not in data.columns
     ]
     if missing:
-        raise ValueError(f"Forecast data is missing required columns: {missing}")
+        raise ForecastValidationError(
+            f"Forecast data is missing required columns: {missing}"
+        )
 
 
 def _prepare_forecasts(data: pd.DataFrame) -> pd.DataFrame:
@@ -48,41 +71,66 @@ def _prepare_forecasts(data: pd.DataFrame) -> pd.DataFrame:
     _check_columns(data)
     columns = [*REQUIRED_COLUMNS, *FORECAST_UNIT_COLUMNS]
     forecast = data.loc[:, columns].copy()
+    # clean_forecast(na.omit = TRUE) considers every input column, including
+    # extra metadata columns that are not used by the metrics.
+    missing_rows = data.isna().any(axis=1).to_numpy()
 
     for column in REQUIRED_COLUMNS:
         if pd.api.types.is_bool_dtype(forecast[column]):
-            raise ValueError(f"Forecast column '{column}' must be numeric.")
+            raise ForecastValidationError(
+                f"Forecast column '{column}' must be numeric."
+            )
         try:
             forecast[column] = pd.to_numeric(forecast[column], errors="raise")
         except (TypeError, ValueError) as error:
-            raise ValueError(f"Forecast column '{column}' must be numeric.") from error
-
-    forecast = forecast.drop_duplicates()
+            raise ForecastValidationError(
+                f"Forecast column '{column}' must be numeric."
+            ) from error
+        if pd.api.types.is_bool_dtype(forecast[column]):
+            raise ForecastValidationError(
+                f"Forecast column '{column}' must be numeric."
+            )
 
     quantiles = forecast["quantile_level"].to_numpy(dtype=np.float64, copy=False)
     finite_quantiles = quantiles[~np.isnan(quantiles)]
     if np.any((finite_quantiles < 0) | (finite_quantiles > 1)):
-        raise ValueError("Quantile levels must be between 0 and 1 inclusive.")
+        raise ForecastValidationError(
+            "Quantile levels must be between 0 and 1 inclusive."
+        )
 
     unique_quantiles = np.unique(finite_quantiles)
     if unique_quantiles.size > 1 and np.any(np.diff(unique_quantiles) <= 1e-10):
         # This intentionally follows scoringutils, whose message says 10 digits
         # but whose implementation rounds to 9.
+        warnings.warn(
+            "The quantile_level column appears to have a rounding issue; "
+            "rounding quantile levels to 9 decimal places.",
+            MetricScoringWarning,
+            stacklevel=3,
+        )
         forecast["quantile_level"] = forecast["quantile_level"].round(9)
 
     duplicate_key = [*FORECAST_UNIT_COLUMNS, "quantile_level"]
     duplicated = forecast.duplicated(duplicate_key, keep=False)
     if duplicated.any():
-        raise ValueError(
-            "There are instances with more than one forecast for the same "
-            "forecast unit and quantile level."
+        raise ForecastValidationError(
+            "Each forecast unit must contain at most one prediction for each "
+            "quantile level; duplicate combinations were found."
         )
 
-    forecast = forecast.dropna(axis=0, how="any")
+    had_missing_rows = bool(missing_rows.any())
+    forecast = forecast.loc[~missing_rows]
     if forecast.empty:
-        raise ValueError(
-            "After removing rows with NA values in the data, no forecasts are left."
+        raise ForecastValidationError(
+            "No scoreable forecasts remain after rows with missing values "
+            "were removed."
         )
+    if had_missing_rows:
+        logger.info(
+            "Some rows containing NA values were removed. "
+            "This is fine if not unexpected."
+        )
+
     return forecast
 
 
@@ -241,6 +289,46 @@ def _coverage(
     return (observed >= lower) & (observed <= upper)
 
 
+def _warn_metric_failure(metric_name: str, message: str) -> None:
+    """Report one failed metric without aborting the remaining metrics."""
+    warnings.warn(
+        f"Metric `{metric_name}` could not be calculated: {message}.",
+        MetricScoringWarning,
+        stacklevel=3,
+    )
+
+
+def _wis_failure_message(
+    predicted: np.ndarray, quantiles: np.ndarray
+) -> str:
+    if _symmetric_pairs(quantiles) is None:
+        return (
+            "the quantile levels do not provide matching lower and upper "
+            "bounds for every interval"
+        )
+    if np.any(
+        predicted[:, quantiles > 0.5]
+        < predicted[:, quantiles < 0.5][:, ::-1]
+    ):
+        return (
+            "at least one prediction interval has a lower bound greater "
+            "than its upper bound"
+        )
+    return "no valid forecast intervals were available"
+
+
+def _bias_failure_message(
+    predicted: np.ndarray, quantiles: np.ndarray
+) -> str:
+    if not np.any(quantiles <= 0.5):
+        return "at least one quantile at or below 0.5 is required"
+    if not np.any(quantiles >= 0.5):
+        return "at least one quantile at or above 0.5 is required"
+    if np.any(np.diff(predicted, axis=1) < 0):
+        return "predictions must be nondecreasing as quantile levels increase"
+    return "bias could not be computed"
+
+
 def _score_arrays(
     units: pd.DataFrame,
     observed: np.ndarray,
@@ -253,29 +341,66 @@ def _score_arrays(
     if components is not None:
         for name, values in components.items():
             result[name] = values
+    else:
+        message = _wis_failure_message(predicted, quantile_array)
+        for name in ("wis", "overprediction", "underprediction", "dispersion"):
+            _warn_metric_failure(name, message)
 
     bias = _bias(observed, predicted, quantile_array)
     if bias is not None:
         result["bias"] = bias
+    else:
+        _warn_metric_failure(
+            "bias", _bias_failure_message(predicted, quantile_array)
+        )
 
     for interval_range in (50, 95):
         coverage = _coverage(observed, predicted, quantile_array, interval_range)
         if coverage is not None:
             result[f"interval_coverage_{interval_range}"] = coverage
+        else:
+            lower_q = (100 - interval_range) / 200
+            upper_q = 1 - lower_q
+            _warn_metric_failure(
+                f"interval_coverage_{interval_range}",
+                f"{interval_range}% coverage requires the {lower_q:g} and "
+                f"{upper_q:g} quantiles",
+            )
 
     median_indexes = np.flatnonzero(quantile_array == 0.5)
     if median_indexes.size == 1:
         result["ae_median"] = np.abs(observed - predicted[:, median_indexes[0]])
+    else:
+        _warn_metric_failure(
+            "ae_median", "absolute median error requires the 0.5 quantile"
+        )
     return result
 
 
 def _score_grid(group: pd.DataFrame, quantiles: Sequence[float]) -> pd.DataFrame:
     """Score a batch sharing one grid (fallback for heterogeneous input)."""
-    ordered = group.sort_values("quantile_level", kind="stable")
-    grouped = ordered.groupby(FORECAST_UNIT_COLUMNS, sort=False, observed=True)
-    units = grouped[FORECAST_UNIT_COLUMNS].first().reset_index(drop=True)
-    predicted = np.vstack(grouped["predicted"].agg(list).to_numpy()).astype(np.float64)
-    observed = grouped["observed"].first().to_numpy(dtype=np.float64)
+    unit_rows: list[dict[str, object]] = []
+    prediction_rows: list[np.ndarray] = []
+    observed_values: list[float] = []
+    grouped = group.groupby(FORECAST_UNIT_COLUMNS, sort=False, observed=True)
+    for unit_key, unit_group in grouped:
+        ordered = unit_group.sort_values("quantile_level", kind="stable")
+        predictions = ordered["predicted"].to_numpy(dtype=np.float64)
+        if not isinstance(unit_key, tuple):
+            unit_key = (unit_key,)
+        unit = dict(zip(FORECAST_UNIT_COLUMNS, unit_key, strict=True))
+
+        # score.forecast_quantile() uses observed = unique(observed) while
+        # transposing. data.table recycles the prediction vector when a unit
+        # contains multiple observed values, yielding one score row per value.
+        for observed in pd.unique(unit_group["observed"]):
+            unit_rows.append(unit)
+            prediction_rows.append(predictions)
+            observed_values.append(float(observed))
+
+    units = pd.DataFrame(unit_rows, columns=FORECAST_UNIT_COLUMNS)
+    predicted = np.vstack(prediction_rows)
+    observed = np.asarray(observed_values, dtype=np.float64)
     return _score_arrays(units, observed, predicted, quantiles)
 
 
@@ -294,10 +419,11 @@ def _score_uniform_grid(
 
     first_rows = np.full(unit_count, len(forecast), dtype=np.intp)
     np.minimum.at(first_rows, unit_codes, np.arange(len(forecast)))
+    all_observed = forecast["observed"].to_numpy(dtype=np.float64, copy=False)
+    if not np.all(all_observed == all_observed[first_rows][unit_codes]):
+        return None
     units = forecast.iloc[first_rows][FORECAST_UNIT_COLUMNS]
-    observed = forecast["observed"].to_numpy(dtype=np.float64, copy=False)[
-        first_rows
-    ]
+    observed = all_observed[first_rows]
     predicted = forecast["predicted"].to_numpy(dtype=np.float64, copy=False)[
         row_order
     ].reshape(unit_count, group_size)
@@ -315,6 +441,16 @@ def score_quantile_forecasts(data: pd.DataFrame) -> pd.DataFrame:
     unit_index = pd.MultiIndex.from_frame(forecast[FORECAST_UNIT_COLUMNS])
     unit_codes, _ = pd.factorize(unit_index, sort=False)
     counts = np.bincount(unit_codes)
+    unique_counts = pd.unique(counts)
+    if unique_counts.size > 1:
+        count_text = ", ".join(str(value) for value in unique_counts)
+        warnings.warn(
+            "Forecast units contain different numbers of quantiles "
+            f"({count_text}). Scores can still be calculated, but comparisons "
+            "between units may be less meaningful.",
+            MetricScoringWarning,
+            stacklevel=2,
+        )
 
     if counts.size and np.all(counts == counts[0]):
         output = _score_uniform_grid(forecast, unit_codes, int(counts[0]))

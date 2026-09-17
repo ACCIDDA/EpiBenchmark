@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 import pandas as pd
 
-from .scoringutils_python import SCORE_COLUMNS, score_quantile_forecasts
+from .scoringutils_python import (
+    ForecastValidationError,
+    SCORE_COLUMNS,
+    score_quantile_forecasts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,10 @@ OUTPUT_COLUMNS = [
     *SCORE_COLUMNS,
     "rwis",
 ]
+
+
+class ScoringError(Exception):
+    """A fatal error raised while EpiBench is scoring forecast data."""
 
 
 def _normalize_facet_rows(data: pd.DataFrame) -> pd.DataFrame:
@@ -140,9 +148,15 @@ class ScoringBridge:
             if col in payload.columns:
                 payload[col] = payload[col].astype(str)
         if "target_end_date" in payload:
-            payload["target_end_date"] = pd.to_datetime(
-                payload["target_end_date"], errors="raise"
-            ).dt.strftime("%Y-%m-%d")
+            try:
+                payload["target_end_date"] = pd.to_datetime(
+                    payload["target_end_date"], errors="raise"
+                ).dt.strftime("%Y-%m-%d")
+            except (TypeError, ValueError) as error:
+                raise ScoringError(
+                    "EpiBench scoring rejected the forecast data: "
+                    "`target_end_date` contains an invalid date."
+                ) from error
         # read.csv() inferred numeric forecast-unit columns in the old bridge.
         # Preserve that observable behavior without doing a CSV round trip.
         for col in ("model", "location", "horizon"):
@@ -152,7 +166,12 @@ class ScoringBridge:
                     payload[col] = numeric
 
         logger.info("Scoring quantile forecasts in Python...")
-        output = score_quantile_forecasts(payload)
+        try:
+            output = score_quantile_forecasts(payload)
+        except ForecastValidationError as error:
+            raise ScoringError(
+                f"EpiBench scoring rejected the forecast data: {error}"
+            ) from error
         baseline_scores = output[output["model"] == self.baseline_model]
         if baseline_scores.empty or "wis" not in output:
             output["rwis"] = pd.NA
