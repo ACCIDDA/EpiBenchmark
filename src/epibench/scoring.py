@@ -18,7 +18,7 @@ from .quantile_validation import (
     validate_for_scoring_config_quantiles,
     validate_for_scoring_library_challenge_quantiles,
 )
-from .score_logic import score_forecasts
+from .scoring_logic import score_forecasts
 from .scoring_summary import (
     FILTER_SUMMARY_FILENAME,
     build_config_missing_forecast_units_summary,

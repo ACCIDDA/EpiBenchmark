@@ -15,7 +15,7 @@ from .build_plots import build_summary_figures, read_scores, validate_scores
 from .load_library_challenge import load_library_challenge
 from .path_utils import establish_hub_path, resolve_output_dir, resolve_path
 from .prep_complete_models_for_plotting import prep_complete_models_for_plotting
-from .score_logic import score_forecasts
+from .scoring_logic import score_forecasts
 
 
 logger = logging.getLogger(__name__)
