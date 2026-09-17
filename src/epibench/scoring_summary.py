@@ -5,11 +5,11 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd
 
-from .horizon_utils import sort_horizon_strings
-from .scoring_bridge import (
+from .forecast_facet_helpers import (
     facet_keys,
     submitted_facet_union,
 )
+from .horizon_utils import sort_horizon_strings
 
 FILTER_SUMMARY_FILENAME = "summary.md"
 

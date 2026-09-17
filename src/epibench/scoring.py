@@ -11,13 +11,14 @@ import pandas as pd
 
 from .config import Config, ScoreParameters, build_score_parameters
 from .extract_model_data_details import extract_model_data_details
+from .forecast_facet_helpers import pare_down_extra_models
 from .load_library_challenge import load_library_challenge
-from .scoring_ground_truth import ScoringGroundTruth
 from .path_utils import establish_hub_path, resolve_output_dir, resolve_path
 from .quantile_validation import (
     validate_for_scoring_config_quantiles,
     validate_for_scoring_library_challenge_quantiles,
 )
+from .score_logic import score_forecasts
 from .scoring_summary import (
     FILTER_SUMMARY_FILENAME,
     build_config_missing_forecast_units_summary,
@@ -28,7 +29,7 @@ from .scoring_summary import (
     format_missing_forecast_units_warning,
 )
 from .scorecard_functions import custom_scorecard
-from .scoring_bridge import ScoringBridge, pare_down_extra_models
+from .scoring_ground_truth import ScoringGroundTruth
 
 logger = logging.getLogger(__name__)
 
@@ -287,8 +288,7 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
     )
 
     logger.info("Scoring model data...")
-    scorer = ScoringBridge(baseline_model=parameters.baseline_model)
-    scores = scorer.score_forecasts(df)
+    scores = score_forecasts(df, baseline_model=parameters.baseline_model)
 
     summary_arguments = dict(
         excluded_files=excluded_files,
@@ -407,8 +407,7 @@ def score_challenge(
 
     # score forecasts; persistence is handled by ScoreResult.save().
     logger.info("Scoring model data...")
-    scorer = ScoringBridge(baseline_model=baseline_model)
-    scores = scorer.score_forecasts(df)
+    scores = score_forecasts(df, baseline_model=baseline_model)
 
     # build the scorecard using the custom function registry
     scorecard_results = custom_scorecard(

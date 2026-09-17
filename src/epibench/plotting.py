@@ -15,7 +15,7 @@ from .build_plots import build_summary_figures, read_scores, validate_scores
 from .load_library_challenge import load_library_challenge
 from .path_utils import establish_hub_path, resolve_output_dir, resolve_path
 from .prep_complete_models_for_plotting import prep_complete_models_for_plotting
-from .scoring_bridge import ScoringBridge
+from .score_logic import score_forecasts
 
 
 logger = logging.getLogger(__name__)
@@ -125,8 +125,10 @@ def plot_challenge(
         valid_target=challenge_definition["target"],
     )
 
-    scorer = ScoringBridge(baseline_model=baseline_model)
-    complete_models_scores = scorer.score_forecasts(complete_models_data)
+    complete_models_scores = score_forecasts(
+        complete_models_data,
+        baseline_model=baseline_model,
+    )
     complete_models_scores = complete_models_scores[
         complete_models_scores["model"] != baseline_model
     ]

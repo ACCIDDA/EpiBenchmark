@@ -1,9 +1,9 @@
-"""Fast Python implementation of the quantile scoringutils metrics EpiBench uses.
+"""Complete in-process quantile-scoring pipeline for EpiBench.
 
 The formulas and grouping behavior in this module mirror scoringutils 2.2.0.9000
-for the metric list historically configured in :mod:`epibench.scoring_bridge`.
-They are deliberately kept private to EpiBench rather than presented as a
-general Python port of scoringutils.
+for the metrics EpiBench uses. Input normalization, metric calculation,
+relative WIS, output-schema enforcement, and error behavior live here so the
+public scoring path has no adapter or subprocess layer.
 """
 
 from __future__ import annotations
@@ -16,6 +16,13 @@ import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "MetricScoringWarning",
+    "OUTPUT_COLUMNS",
+    "ScoringError",
+    "score_forecasts",
+]
 
 
 class ForecastValidationError(ValueError):
@@ -44,6 +51,15 @@ SCORE_COLUMNS = [
     "interval_coverage_95",
     "ae_median",
 ]
+OUTPUT_COLUMNS = [
+    *FORECAST_UNIT_COLUMNS,
+    *SCORE_COLUMNS,
+    "rwis",
+]
+
+
+class ScoringError(Exception):
+    """A fatal error raised while EpiBench is scoring forecast data."""
 
 
 def _check_columns(data: pd.DataFrame) -> None:
@@ -430,7 +446,7 @@ def _score_uniform_grid(
     return _score_arrays(units, observed, predicted, quantile_matrix[0])
 
 
-def score_quantile_forecasts(data: pd.DataFrame) -> pd.DataFrame:
+def _score_quantile_forecasts(data: pd.DataFrame) -> pd.DataFrame:
     """Return the same unsummarized scores as EpiBench's scoringutils call.
 
     The implementation batches forecast units that share a quantile grid and
@@ -474,3 +490,86 @@ def score_quantile_forecasts(data: pd.DataFrame) -> pd.DataFrame:
 
     output = pd.concat(scored, ignore_index=True, sort=False)
     return output
+
+
+def _normalize_score_input(data: pd.DataFrame) -> pd.DataFrame:
+    """Normalize input types previously produced by the CSV round trip."""
+    if not isinstance(data, pd.DataFrame):
+        raise ForecastValidationError("Forecast data must be a pandas DataFrame.")
+
+    payload = data.copy()
+    for column in FORECAST_UNIT_COLUMNS:
+        if column in payload.columns:
+            payload[column] = payload[column].astype(str)
+
+    if "target_end_date" in payload:
+        try:
+            payload["target_end_date"] = pd.to_datetime(
+                payload["target_end_date"], errors="raise"
+            ).dt.strftime("%Y-%m-%d")
+        except (TypeError, ValueError) as error:
+            raise ForecastValidationError(
+                "`target_end_date` contains an invalid date."
+            ) from error
+
+    # read.csv() inferred numeric forecast-unit columns in the former R path.
+    # Preserve that data behavior without a file or subprocess round trip.
+    for column in ("model", "location", "horizon"):
+        if column in payload:
+            numeric = pd.to_numeric(payload[column], errors="coerce")
+            if numeric.notna().all():
+                payload[column] = numeric
+    return payload
+
+
+def _add_relative_wis(
+    scores: pd.DataFrame, baseline_model: str
+) -> pd.DataFrame:
+    """Add WIS relative to the configured baseline model."""
+    baseline_scores = scores[scores["model"] == baseline_model]
+    if baseline_scores.empty or "wis" not in scores:
+        scores["rwis"] = pd.NA
+        return scores
+
+    join_columns = [
+        "reference_date",
+        "target_end_date",
+        "location",
+        "horizon",
+    ]
+    baseline_wis = baseline_scores[join_columns + ["wis"]].rename(
+        columns={"wis": "baseline_wis"}
+    )
+    scores = scores.merge(
+        baseline_wis,
+        on=join_columns,
+        how="left",
+        sort=False,
+    )
+    scores["rwis"] = scores["wis"].div(scores["baseline_wis"]).where(
+        scores["baseline_wis"].notna() & scores["baseline_wis"].ne(0)
+    )
+    return scores.drop(columns=["baseline_wis"])
+
+
+def score_forecasts(data: pd.DataFrame, baseline_model: str) -> pd.DataFrame:
+    """Score quantile forecasts and return the fixed EpiBench output schema."""
+    logger.info("Scoring quantile forecasts in Python...")
+    try:
+        payload = _normalize_score_input(data)
+        scores = _score_quantile_forecasts(payload)
+    except ForecastValidationError as error:
+        raise ScoringError(
+            f"EpiBench scoring rejected the forecast data: {error}"
+        ) from error
+
+    scores = _add_relative_wis(scores, baseline_model)
+
+    # Individual metric failures do not abort scoring. Missing results are
+    # represented explicitly while the file contract remains stable.
+    for column in OUTPUT_COLUMNS:
+        if column not in scores:
+            scores[column] = pd.NA
+
+    logger.info("Success ✅")
+    return scores.loc[:, OUTPUT_COLUMNS]
