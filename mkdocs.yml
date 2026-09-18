@@ -85,5 +85,5 @@ nav:
   #     - epibench.gt_from_hub: api/gt_from_hub.md
   #     - epibench.plot_evaluation_results: api/plot_evaluation_results.md
   #     - epibench.score: api/score.md
-  #     - epibench.scoring_bridge: api/scoring_bridge.md
+  #     - epibench.scoring_logic: api/scoring_logic.md
   #     - epibench.create: api/create.md
