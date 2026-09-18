@@ -48,7 +48,7 @@ EpiBenchmark is being developed at UNC Chapel Hill through [ACCIDDA](https://www
 
 ## Attribution
 
-EpiBenchmark relies on the [Hubverse](https://hubverse.io/) structure as a standard for data. Without the Hubverse and its associated tools, EpiBenchmark would not be possible. The scoring component of EpiBenchmark utilizes [scoringutils](https://epiforecasts.io/scoringutils/articles/scoringutils.html), a [CRAN](https://cran.r-project.org/web/packages/scoringutils/index.html) package that facillitates the evaluation of forecasts and is highly-compatible with the Hubverse structure. 
+EpiBenchmark relies on the [Hubverse](https://hubverse.io/) structure as a standard for forecast and target data. Its in-process scoring implementation evaluates Hubverse quantile forecasts and produces the metrics used by EpiBenchmark scorecards and plots.
 
 ## Contact
 

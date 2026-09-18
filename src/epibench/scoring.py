@@ -11,13 +11,14 @@ import pandas as pd
 
 from .config import Config, ScoreParameters, build_score_parameters
 from .extract_model_data_details import extract_model_data_details
+from .forecast_facet_helpers import pare_down_extra_models
 from .load_library_challenge import load_library_challenge
-from .scoring_ground_truth import ScoringGroundTruth
 from .path_utils import establish_hub_path, resolve_output_dir, resolve_path
 from .quantile_validation import (
     validate_for_scoring_config_quantiles,
     validate_for_scoring_library_challenge_quantiles,
 )
+from .scoring_logic import score_forecasts
 from .scoring_summary import (
     FILTER_SUMMARY_FILENAME,
     build_config_missing_forecast_units_summary,
@@ -28,12 +29,22 @@ from .scoring_summary import (
     format_missing_forecast_units_warning,
 )
 from .scorecard_functions import custom_scorecard
-from .scoring_bridge import ScoringBridge, pare_down_extra_models
+from .scoring_ground_truth import ScoringGroundTruth
 
 logger = logging.getLogger(__name__)
 
 SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash, shoudl be challenge-name
 SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash, should be challenge-name
+FORECAST_COLUMNS_FOR_SCORING = [
+    "model",
+    "reference_date",
+    "target_end_date",
+    "location",
+    "horizon",
+    "target",
+    "quantile_level",
+    "predicted",
+]
 
 
 @dataclass
@@ -48,7 +59,7 @@ class ScoreResult:
 
     mode: Literal["standard", "challenge"]
     scores: pd.DataFrame
-    scorecard: Optional[pd.DataFrame]
+    scorecard: Optional[pd.DataFrame] # only present if a challenge scoring run
     summary: str
     excluded_files: frozenset[str]
     output_dir: Optional[Path] = None
@@ -121,6 +132,24 @@ def _write_output_csv(
     # save
     output_df.to_csv(output_path, index=False, encoding="utf-8-sig")
     return output_path
+
+
+def _combine_models_for_scoring(
+    model_dict: Mapping[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """Combine models using only columns consumed by the scoring pipeline."""
+    standardized_models = []
+    for model_name, forecast_df in model_dict.items():
+        missing = set(FORECAST_COLUMNS_FOR_SCORING) - set(forecast_df.columns)
+        if missing:
+            raise ValueError(
+                f"Model '{model_name}' is missing columns required for scoring: "
+                f"{sorted(missing)}."
+            )
+        standardized_models.append(
+            forecast_df.loc[:, FORECAST_COLUMNS_FOR_SCORING]
+        )
+    return pd.concat(standardized_models, ignore_index=True)
 
 
 def _resolve_model_info(
@@ -280,14 +309,13 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
         eval_end_date=parameters.evaluation_end_date,
     )
 
-    df = pd.concat(model_dict.values(), ignore_index=True)
+    df = _combine_models_for_scoring(model_dict)
     df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
         columns=["target"]
     )
 
     logger.info("Scoring model data...")
-    scorer = ScoringBridge(baseline_model=parameters.baseline_model)
-    scores = scorer.score_forecasts(df)
+    scores = score_forecasts(df, baseline_model=parameters.baseline_model)
 
     summary_arguments = dict(
         excluded_files=excluded_files,
@@ -399,15 +427,14 @@ def score_challenge(
         eval_end_date=evaluation_end_date,
     )
 
-    df = pd.concat(model_dict.values(), ignore_index=True)
+    df = _combine_models_for_scoring(model_dict)
     df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
         columns=["target"]
     )
 
     # score forecasts; persistence is handled by ScoreResult.save().
     logger.info("Scoring model data...")
-    scorer = ScoringBridge(baseline_model=baseline_model)
-    scores = scorer.score_forecasts(df)
+    scores = score_forecasts(df, baseline_model=baseline_model)
 
     # build the scorecard using the custom function registry
     scorecard_results = custom_scorecard(
