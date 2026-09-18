@@ -1,9 +1,9 @@
-"""Complete in-process quantile-scoring pipeline for EpiBench.
+"""
+Complete in-process quantile-scoring pipeline for EpiBench.
 
-The formulas and grouping behavior in this module mirror scoringutils 2.2.0.9000
-for the metrics EpiBench uses. Input normalization, metric calculation,
-relative WIS, output-schema enforcement, and error behavior live here so the
-public scoring path has no adapter or subprocess layer.
+The formulas and grouping behavior in this module fully mirror scoringutils 2.2.0.9000
+for the metrics EpiBenchmark uses. Input normalization, metric calculation, 
+output-schema enforcement, and error behavior live here.
 """
 
 from __future__ import annotations
@@ -88,7 +88,8 @@ def _prepare_forecasts(data: pd.DataFrame) -> pd.DataFrame:
     columns = [*REQUIRED_COLUMNS, *FORECAST_UNIT_COLUMNS]
     forecast = data.loc[:, columns].copy()
     # clean_forecast(na.omit = TRUE) considers every input column, including
-    # extra metadata columns that are not used by the metrics.
+    # extra metadata columns that are not used by the metrics. 
+    # rows with NAs are ommitted from scoring!
     missing_rows = data.isna().any(axis=1).to_numpy()
 
     for column in REQUIRED_COLUMNS:
@@ -116,8 +117,7 @@ def _prepare_forecasts(data: pd.DataFrame) -> pd.DataFrame:
 
     unique_quantiles = np.unique(finite_quantiles)
     if unique_quantiles.size > 1 and np.any(np.diff(unique_quantiles) <= 1e-10):
-        # This intentionally follows scoringutils, whose message says 10 digits
-        # but whose implementation rounds to 9.
+        # mirrors scoringutils rounding behavior
         warnings.warn(
             "The quantile_level column appears to have a rounding issue; "
             "rounding quantile levels to 9 decimal places.",
@@ -166,7 +166,6 @@ def _symmetric_pairs(
     ):
         return None
 
-    # quantile_to_interval_numeric() orders intervals by increasing range.
     lower = np.flatnonzero(quantiles < 0.5)[::-1]
     upper = np.empty(lower.size, dtype=np.intp)
     for index, lower_index in enumerate(lower):
@@ -193,15 +192,12 @@ def _wis_components(
     lower = predicted[:, lower_indexes]
     upper = predicted[:, upper_indexes]
 
-    # interval_score() rejects a complete metric batch if any bound is crossed.
     if np.any(upper < lower):
         return None
 
     y = observed[:, np.newaxis]
     alpha = 2 * quantiles[lower_indexes]
     dispersion_parts = (upper - lower) * alpha / 2
-    # Preserve scoringutils' operation order, including its NaN result for the
-    # zero-width probability tail at quantile levels 0 and 1.
     with np.errstate(divide="ignore", invalid="ignore"):
         overprediction_parts = (
             2 / alpha * (lower - y) * (y < lower).astype(float) * alpha / 2
@@ -406,9 +402,6 @@ def _score_grid(group: pd.DataFrame, quantiles: Sequence[float]) -> pd.DataFrame
             unit_key = (unit_key,)
         unit = dict(zip(FORECAST_UNIT_COLUMNS, unit_key, strict=True))
 
-        # score.forecast_quantile() uses observed = unique(observed) while
-        # transposing. data.table recycles the prediction vector when a unit
-        # contains multiple observed values, yielding one score row per value.
         for observed in pd.unique(unit_group["observed"]):
             unit_rows.append(unit)
             prediction_rows.append(predictions)
@@ -473,8 +466,8 @@ def _score_quantile_forecasts(data: pd.DataFrame) -> pd.DataFrame:
         if output is not None:
             return output
 
-    # scoringutils supports different quantile grids in one input. EpiBench's
-    # normal validation disallows that, but retain the behavior as a fallback.
+    # scoring logic does not do quantile validation outside of: non-numeric, outside of [0,1], duplicated within forecast unit
+    # scoring logic expects valid quantiles at this point, otherwise invalid quantiles (e.g., asymmetric) will pass through silently
     unit_groups = forecast.groupby(FORECAST_UNIT_COLUMNS, sort=False, observed=True)
     grid_keys = np.empty(len(forecast), dtype=object)
     for row_indexes in unit_groups.indices.values():
@@ -512,8 +505,6 @@ def _normalize_score_input(data: pd.DataFrame) -> pd.DataFrame:
                 "`target_end_date` contains an invalid date."
             ) from error
 
-    # read.csv() inferred numeric forecast-unit columns in the former R path.
-    # Preserve that data behavior without a file or subprocess round trip.
     for column in ("model", "location", "horizon"):
         if column in payload:
             numeric = pd.to_numeric(payload[column], errors="coerce")
@@ -565,8 +556,9 @@ def score_forecasts(data: pd.DataFrame, baseline_model: str) -> pd.DataFrame:
 
     scores = _add_relative_wis(scores, baseline_model)
 
-    # Individual metric failures do not abort scoring. Missing results are
-    # represented explicitly while the file contract remains stable.
+    # Individual metric failures do not abort scoring. If unable to calculate,
+    # e.g., `interval_coverage_95`, all values for that col will be NA and the 
+    # process will continue. This mirrors `scoringutils`
     for column in OUTPUT_COLUMNS:
         if column not in scores:
             scores[column] = pd.NA
