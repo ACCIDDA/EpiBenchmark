@@ -26,6 +26,7 @@ from .scoring_summary import (
     format_extra_model_facet_coverage_warning,
     format_extra_model_facet_paring_summary,
     format_excluded_files_summary,
+    format_missing_ground_truth_units_summary,
     format_missing_forecast_units_warning,
 )
 from .scorecard_functions import custom_scorecard
@@ -313,6 +314,7 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
     df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
         columns=["target"]
     )
+    missing_ground_truth_units_summary = format_missing_ground_truth_units_summary(df)
 
     logger.info("Scoring model data...")
     scores = score_forecasts(df, baseline_model=parameters.baseline_model)
@@ -322,6 +324,7 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
         target=parameters.target,
         target_end_dates=global_target_end_dates,
         missing_forecast_units_warning=summary_warning_blocks,
+        missing_ground_truth_units_summary=missing_ground_truth_units_summary,
     )
     summary = format_excluded_files_summary(**summary_arguments)
     logger.info("Process executed successfully to end 🎉.")
@@ -411,8 +414,6 @@ def score_challenge(
         quantiles=quantiles,
         locations=challenge_definition["locations"],
     )
-    summary = format_excluded_files_summary(**summary_arguments)
-
     for model_name_key, forecast_df in model_dict.items():
         if "_source_file" in forecast_df.columns:
             model_dict[model_name_key] = forecast_df.drop(columns=["_source_file"])
@@ -431,6 +432,10 @@ def score_challenge(
     df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
         columns=["target"]
     )
+    summary_arguments["missing_ground_truth_units_summary"] = (
+        format_missing_ground_truth_units_summary(df)
+    )
+    summary = format_excluded_files_summary(**summary_arguments)
 
     # score forecasts; persistence is handled by ScoreResult.save().
     logger.info("Scoring model data...")
