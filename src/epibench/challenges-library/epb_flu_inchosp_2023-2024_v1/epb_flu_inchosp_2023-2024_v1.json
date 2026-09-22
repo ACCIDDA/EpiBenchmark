@@ -1,5 +1,4 @@
 {
-    "zenodo_doi": "TBD",
     "hub": "flusight-forecast-hub",
     "hub_path": "https://github.com/cdcepi/fluSight-forecast-hub",
     "target": "wk inc flu hosp",

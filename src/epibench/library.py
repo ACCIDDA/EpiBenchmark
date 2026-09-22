@@ -23,13 +23,22 @@ class ChallengeInfo(TypedDict):
     data: str
 
 
-def all_challenges() -> dict[str, dict]:
-    """Return ``{challenge_id: definition}`` for every JSON in the library, sorted by id."""
+def _challenge_definition_files():
+    """Return bundled challenge definition files, sorted by challenge id."""
     challenges_dir = resources.files("epibench").joinpath("challenges-library")
-    files = sorted(
-        (p for p in challenges_dir.iterdir() if p.suffix.lower() == ".json"),
-        key=lambda p: p.stem,
-    )
+    files = []
+    for challenge_dir in challenges_dir.iterdir():
+        if not challenge_dir.is_dir():
+            continue
+        definition_path = challenge_dir.joinpath(f"{challenge_dir.name}.json")
+        if definition_path.is_file():
+            files.append(definition_path)
+    return sorted(files, key=lambda path: path.stem)
+
+
+def all_challenges() -> dict[str, dict]:
+    """Return ``{challenge_id: definition}`` for every bundled challenge."""
+    files = _challenge_definition_files()
     return {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in files}
 
 
