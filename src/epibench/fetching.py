@@ -39,9 +39,10 @@ def fetch_challenge(challenge_name: str) -> Challenge:
 
     The challenge is downloaded into temporary storage, and no challenge files
     are retained on the user's machine. The returned challenge contains the
-    contents of ``instruction.md`` and its vintaged ground-truth tasks. Tasks
-    follow the order in ``task_list.csv``; each task's ``name`` is its reference
-    date and its ``gt_df`` is the corresponding ground-truth DataFrame.
+    contents of ``instruction.md``, the library definition's ``notes`` value,
+    and its vintaged ground-truth tasks. Tasks follow the order in
+    ``task_list.csv``; each task's ``name`` is its reference date and its
+    ``gt_df`` is the corresponding ground-truth DataFrame.
 
     Args:
         challenge_name: name of a published challenge in the EpiBenchmark challenge library
@@ -50,10 +51,21 @@ def fetch_challenge(challenge_name: str) -> Challenge:
         Challenge class instance
     """
     challenge_id = Path(challenge_name).stem
+    definition = load_challenge(challenge_name)
+    notes = definition.get("notes")
+    if not isinstance(notes, str):
+        raise ValueError(
+            f"Library challenge '{challenge_id}' must define `notes` as a string."
+        )
+
     with tempfile.TemporaryDirectory(prefix="epibench-fetch-") as temporary_dir:
         challenge_dir = Path(temporary_dir) / challenge_id
-        _fetch_to_directory(challenge_name, challenge_dir, show_progress=False)
-        return _load_fetched_challenge(challenge_dir)
+        _fetch_to_directory(
+            challenge_name,
+            challenge_dir,
+            show_progress=False,
+        )
+        return _load_fetched_challenge(challenge_dir, notes=notes)
 
 
 def _fetch_to_directory(
@@ -98,7 +110,7 @@ def _fetch_to_directory(
     logger.info("Challenge '%s' downloaded to %s ✅", challenge_id, challenge_dir)
 
 
-def _load_fetched_challenge(challenge_dir: Path) -> Challenge:
+def _load_fetched_challenge(challenge_dir: Path, *, notes: str) -> Challenge:
     """Load the programmatic challenge object from an unpacked challenge folder."""
     instructions_path = challenge_dir / "instruction.md"
     if not instructions_path.is_file():
@@ -109,6 +121,7 @@ def _load_fetched_challenge(challenge_dir: Path) -> Challenge:
     return Challenge(
         instructions=instructions_path.read_text(encoding="utf-8"),
         tasks=_load_ground_truth_tasks(challenge_dir),
+        notes=notes,
     )
 
 

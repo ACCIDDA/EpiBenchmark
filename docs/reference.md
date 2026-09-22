@@ -4,6 +4,13 @@
 
 Programmatic entry points behind the [challenge library commands](challenge-information/challenges.md).
 
+## `epibench.Challenge`
+
+`notes: str | None`
+: Notes from the bundled definition of a library challenge. Access them with
+  `challenge.notes` after calling `epibench.fetch_challenge(...)`. This value is
+  `None` for challenges created directly with `epibench.create(...)`.
+
 ## `epibench.library`
 
 `all_challenges() -> dict[str, dict]`

@@ -1,6 +1,6 @@
 # Challenge library
 
-EpiBenchmark ships with a library of predefined **challenges** (challenges have fixed hub, target, dates, horizons, quantiles, locations, and scoring settings). Explore each challenge in our library below. You can list them locally via the command line with `epibench list`, and fully download a challenge from Zenodo with `epibench fetch <challenge-id>`.
+EpiBenchmark ships with a library of predefined **challenges** (challenges have fixed hub, target, dates, horizons, quantiles, locations, and scoring settings). Each location uses 52 locations: the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded. Explore each challenge in our library below. You can list them locally via the command line with `epibench list`, and fully download a challenge from Zenodo with `epibench fetch <challenge-id>`.
 
 Click a challenge to expand its full definition.
 
