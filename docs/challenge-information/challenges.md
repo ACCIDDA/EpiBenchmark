@@ -17,6 +17,18 @@ Click a challenge to expand its full definition.
     | Scorecard | total wis, 50_coverage, 95_coverage |
     | Zenodo | *not yet published to Zenodo* |
 
+    !!! warning "Ground-truth exclusions"
+        Ground-truth observations are unavailable for the following location and target-end-date combinations:
+
+        | Location | Target end date |
+        | --- | --- |
+        | `25` | `2024-05-18` |
+        | `25` | `2024-05-25` |
+        | `27` | `2024-05-18` |
+        | `27` | `2024-05-25` |
+
+        Forecast units corresponding to these combinations are excluded from scoring. They must still be present in model output to satisfy the challenge's complete-coverage validation.
+
 ??? note "epb_flu_inchosp_2024-2025_dev"
     | Field | Value |
     | --- | --- |
