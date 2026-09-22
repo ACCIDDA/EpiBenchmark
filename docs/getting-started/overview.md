@@ -5,7 +5,7 @@ Once completing the installation instructions, you will have all EpiBenchmark co
 ## Using a library challenge
 
 - `epibench list`: Lists the challenges available in the bundled **challenge library**. [Learn more and browse the challenge catalog](../challenge-information/challenges.md).
-- `epibench fetch <challenge-id> --output-path`: Downloads a challenge's data files from Zenodo
+- `epibench fetch <challenge-id> --output-path`: Downloads a bundled challenge to a local directory
     - A challenge's data files include all the data you need to run your model for a challenge, including instruction files for an agent
 - `epibench score <challenge-id> --model-data-path --model-name --output-path`: A command that scores model forecast data with a weighted interval score (WIS) and compiles all information into two CSVs:
     - `EpiBenchmark_scorecard.csv`: a scorecard, with one value for each metric defined in the challenge metrics

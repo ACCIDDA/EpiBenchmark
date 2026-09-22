@@ -1,43 +1,42 @@
-"""Download and load EpiBenchmark challenge data from Zenodo."""
+"""Copy and load challenges bundled with EpiBenchmark."""
 
 from __future__ import annotations
 
-import json
 import logging
 import shutil
 import tempfile
-import zipfile
-from contextlib import nullcontext
+from importlib import resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Optional
-from urllib.request import Request, urlopen
 
 import click
 import pandas as pd
 
 from .challenge import Challenge, Task
-from .library import is_published, load_challenge
+from .library import load_challenge
 
 logger = logging.getLogger(__name__)
-
-_ZENODO_RECORDS_API = "https://zenodo.org/api/records"
 
 
 def fetch(challenge_id: str, output_path: Optional[str] = None) -> None:
     """
-    Download one library challenge's data files from Zenodo into
-    ``<output_path>/<challenge_id>/`` (defaults to the current directory),
-    unzipping any archives and keeping a copy of the challenge definition.
+    Copy one bundled challenge into ``<output_path>/<challenge_id>/``.
+
+    The output path defaults to the current directory. Existing challenge
+    directories are never overwritten.
     """
     normalized_challenge_id = Path(challenge_id).stem
-    challenge_dir = Path(output_path or ".").expanduser().resolve() / normalized_challenge_id
-    _fetch_to_directory(challenge_id, challenge_dir, show_progress=True)
+    challenge_dir = (
+        Path(output_path or ".").expanduser().resolve() / normalized_challenge_id
+    )
+    _fetch_to_directory(challenge_id, challenge_dir)
 
 
 def fetch_challenge(challenge_name: str) -> Challenge:
-    """Download and return a library challenge for programmatic use.
+    """Load and return a bundled library challenge for programmatic use.
 
-    The challenge is downloaded into temporary storage, and no challenge files
+    The bundled files are copied into temporary storage, and no challenge files
     are retained on the user's machine. The returned challenge contains the
     contents of ``instruction.md``, the library definition's ``notes`` value,
     and its vintaged ground-truth tasks. Tasks follow the order in
@@ -45,7 +44,7 @@ def fetch_challenge(challenge_name: str) -> Challenge:
     ``gt_df`` is the corresponding ground-truth DataFrame.
 
     Args:
-        challenge_name: name of a published challenge in the EpiBenchmark challenge library
+        challenge_name: name of a challenge in the EpiBenchmark challenge library
 
     Returns:
         Challenge class instance
@@ -60,54 +59,81 @@ def fetch_challenge(challenge_name: str) -> Challenge:
 
     with tempfile.TemporaryDirectory(prefix="epibench-fetch-") as temporary_dir:
         challenge_dir = Path(temporary_dir) / challenge_id
-        _fetch_to_directory(
-            challenge_name,
-            challenge_dir,
-            show_progress=False,
-        )
+        _fetch_to_directory(challenge_name, challenge_dir)
         return _load_fetched_challenge(challenge_dir, notes=notes)
 
 
 def _fetch_to_directory(
     challenge_name: str,
     challenge_dir: Path,
-    *,
-    show_progress: bool,
 ) -> None:
-    """Download and unpack a library challenge into an exact destination."""
-    definition = load_challenge(challenge_name)
+    """Copy a bundled library challenge into an exact destination."""
+    load_challenge(challenge_name)
     challenge_id = Path(challenge_name).stem
-    if not is_published(definition):
-        raise click.ClickException(
-            f"Challenge '{challenge_id}' has not been published to Zenodo yet "
-            f"(zenodo_doi is '{definition.get('zenodo_doi')}')."
-        )
-
-    # Assumes a zenodo doi looks like '10.5281/zenodo.1234567'; with the record id as the trailing number.
-    record_id = str(definition["zenodo_doi"]).rsplit("zenodo.", 1)[-1].strip("/")
     if challenge_dir.exists():
         raise click.ClickException(
             f"'{challenge_dir}' already exists; remove it or pick another --output-path."
         )
-    challenge_dir.mkdir(parents=True)
+
+    source_dir = (
+        resources.files("epibench")
+        .joinpath("challenges-library")
+        .joinpath(challenge_id)
+    )
+    if not source_dir.is_dir():
+        raise click.ClickException(
+            f"Bundled files are missing for challenge '{challenge_id}'."
+        )
+    _validate_bundled_challenge_directory(source_dir, challenge_id)
 
     try:
-        files = _get_json(f"{_ZENODO_RECORDS_API}/{record_id}").get("files") or []
-        if not files:
-            raise click.ClickException(f"Zenodo record {record_id} contains no files.")
-        logger.info("Downloading %d file(s) from Zenodo record %s...", len(files), record_id)
-        for file_info in files:
-            _download(file_info, challenge_dir, show_progress=show_progress)
-        for archive in challenge_dir.glob("*.zip"):
-            _extract_zip(archive, challenge_dir)
-            archive.unlink()
-        # keep the challenge definition alongside the data for downstream scoring
-        (challenge_dir / f"{challenge_id}.json").write_text(json.dumps(definition, indent=4))
+        challenge_dir.mkdir(parents=True)
+        _copy_resource_tree(source_dir, challenge_dir)
     except BaseException:
-        shutil.rmtree(challenge_dir, ignore_errors=True)  # don't leave a partial folder behind
+        shutil.rmtree(challenge_dir, ignore_errors=True)
         raise
 
-    logger.info("Challenge '%s' downloaded to %s ✅", challenge_id, challenge_dir)
+    logger.info("Challenge '%s' copied to %s", challenge_id, challenge_dir)
+
+
+def _validate_bundled_challenge_directory(
+    source_dir: Traversable,
+    challenge_id: str,
+) -> None:
+    """Require the files that constitute a fetchable bundled challenge."""
+    required_paths = [
+        f"{challenge_id}.json",
+        "agent.md",
+        "instruction.md",
+        "task_list.csv",
+    ]
+    missing_paths = [
+        path for path in required_paths if not source_dir.joinpath(path).is_file()
+    ]
+    if not source_dir.joinpath("gt").is_dir():
+        missing_paths.append("gt")
+    if missing_paths:
+        raise click.ClickException(
+            f"Bundled challenge '{challenge_id}' is incomplete; missing: "
+            f"{', '.join(missing_paths)}."
+        )
+
+
+def _copy_resource_tree(source_dir: Traversable, destination_dir: Path) -> None:
+    """Recursively copy a package-resource directory to the filesystem."""
+    for resource in source_dir.iterdir():
+        if resource.name.startswith("."):
+            continue
+        destination = destination_dir / resource.name
+        if resource.is_dir():
+            destination.mkdir()
+            _copy_resource_tree(resource, destination)
+        elif resource.is_file():
+            with (
+                resource.open("rb") as source_file,
+                destination.open("wb") as output_file,
+            ):
+                shutil.copyfileobj(source_file, output_file)
 
 
 def _load_fetched_challenge(challenge_dir: Path, *, notes: str) -> Challenge:
@@ -177,70 +203,33 @@ def _load_ground_truth_tasks(challenge_dir: Path) -> list[Task]:
                 f"Ground-truth path for {reference_date} resolves outside the challenge folder."
             ) from error
 
-        if ground_truth_path.suffix.lower() != ".csv":
+        suffix = ground_truth_path.suffix.lower()
+        if suffix not in {".csv", ".parquet"}:
             raise ValueError(
-                f"Ground-truth file for {reference_date} must be a CSV: {relative_path}."
+                f"Ground-truth file for {reference_date} must be a CSV or Parquet file: "
+                f"{relative_path}."
             )
         if not ground_truth_path.is_file():
             raise FileNotFoundError(
                 f"Could not find ground-truth file for {reference_date}: {ground_truth_path}."
             )
 
-        ground_truth = pd.read_csv(
-            ground_truth_path,
-            dtype={"location": str},
-            low_memory=False,
-        )
+        if suffix == ".parquet":
+            ground_truth = pd.read_parquet(ground_truth_path)
+            if "target_end_date" in ground_truth:
+                ground_truth["target_end_date"] = ground_truth[
+                    "target_end_date"
+                ].astype(str)
+            if "location" in ground_truth:
+                ground_truth["location"] = ground_truth["location"].astype(str)
+            if "observed" in ground_truth:
+                ground_truth["observed"] = ground_truth["observed"].astype(float)
+        else:
+            ground_truth = pd.read_csv(
+                ground_truth_path,
+                dtype={"location": str},
+                low_memory=False,
+            )
         tasks.append(Task(name=reference_date, gt_df=ground_truth))
 
     return tasks
-
-
-def _get_json(url: str) -> dict:
-    """GET a URL and parse the JSON body, turning network errors into ClickExceptions."""
-    try:
-        with urlopen(Request(url, headers={"Accept": "application/json"})) as response:
-            return json.load(response)
-    except OSError as error:  # HTTPError/URLError are OSError subclasses
-        raise click.ClickException(f"Could not reach Zenodo ({url}): {error}") from error
-
-
-def _download(file_info: dict, dest_dir: Path, *, show_progress: bool = True) -> None:
-    """Download one Zenodo file entry into ``dest_dir``."""
-    name, size, url = file_info["key"], file_info["size"], file_info["links"]["self"]
-    request = Request(url, headers={"Accept": "*/*", "User-Agent": "epibench"})
-    try:
-        with urlopen(request) as response, (dest_dir / name).open("wb") as out_file:
-            progress = (
-                click.progressbar(length=size, label=f"  {name}", show_pos=True)
-                if show_progress
-                else nullcontext()
-            )
-            with progress as bar:
-                for chunk in iter(lambda: response.read(1 << 16), b""):
-                    out_file.write(chunk)
-                    if bar is not None:
-                        bar.update(len(chunk))
-    except OSError as error:
-        raise click.ClickException(f"Failed to download '{name}' from Zenodo: {error}") from error
-
-
-def _extract_zip(archive_path: Path, dest_dir: Path) -> None:
-    """Unzip into ``dest_dir``, stripping a single wrapping top-level folder if present."""
-    logger.info("Unzipping %s ...", archive_path.name)
-    dest_root = dest_dir.resolve()
-    with zipfile.ZipFile(archive_path) as archive:
-        tops = {member.split("/", 1)[0] for member in archive.namelist()}
-        strip = f"{tops.pop()}/" if len(tops) == 1 else ""
-        for member in archive.infolist():
-            rel = member.filename[len(strip):] if member.filename.startswith(strip) else member.filename
-            if not rel:
-                continue  # the wrapping top-level directory entry itself
-            target = (dest_dir / rel).resolve()
-            if target != dest_root and dest_root not in target.parents:
-                raise click.ClickException(f"Refusing to extract '{member.filename}' outside {dest_dir}.")
-            if member.is_dir():
-                target.mkdir(parents=True, exist_ok=True)
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(archive.read(member))

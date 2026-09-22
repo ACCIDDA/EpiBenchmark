@@ -34,6 +34,7 @@ dependencies = [
     "click>=8.1",
     "numpy>=1.24,<2.2",
     "pandas>=2.0,<3",
+    "pyarrow>=14",
     "PyYAML>=6.0",
     "pygit2",
     "hubdata",
@@ -69,7 +70,13 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-epibench = ["challenges-library/*/*.json", "hub-dates-library/*.json"]
+epibench = [
+    "challenges-library/*/*.json",
+    "challenges-library/*/*.md",
+    "challenges-library/*/*.csv",
+    "challenges-library/*/gt/*/*.parquet",
+    "hub-dates-library/*.json",
+]
 
 [project.scripts]
 epibench = "epibench.cli:main"
