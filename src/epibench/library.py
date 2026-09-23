@@ -10,8 +10,6 @@ from typing import TypedDict
 
 import click
 
-_REQUIRED_CHALLENGE_FILES = ("agent.md", "instruction.md", "task_list.csv")
-
 
 class ChallengeInfo(TypedDict):
     """Public summary fields for one challenge-library entry."""
@@ -28,20 +26,6 @@ def _challenge_resource_directory(challenge_id: str) -> Traversable:
         .joinpath("challenges-library")
         .joinpath(challenge_id)
     )
-
-
-def _missing_challenge_resources(challenge_id: str) -> list[str]:
-    """Return required bundled paths that are absent for one challenge."""
-    challenge_dir = _challenge_resource_directory(challenge_id)
-    required_files = (f"{challenge_id}.json", *_REQUIRED_CHALLENGE_FILES)
-    missing = [
-        filename
-        for filename in required_files
-        if not challenge_dir.joinpath(filename).is_file()
-    ]
-    if not challenge_dir.joinpath("gt").is_dir():
-        missing.append("gt")
-    return missing
 
 
 def _challenge_definition_files():

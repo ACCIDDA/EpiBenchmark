@@ -4,7 +4,7 @@ EpiBenchmark ships with a library of predefined **challenges** (challenges have 
 
 Click a challenge to expand its full definition.
 
-??? note "epb_flu_inchosp_2023-2024_v1"
+??? note "epb_flu_inchosp_2023-2024_dev"
     | Field | Value |
     | --- | --- |
     | Hub | `flusight-forecast-hub` |

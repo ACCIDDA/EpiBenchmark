@@ -13,11 +13,7 @@ import click
 import pandas as pd
 
 from .challenge import Challenge, Task
-from .library import (
-    _challenge_resource_directory,
-    _missing_challenge_resources,
-    load_challenge,
-)
+from .library import _challenge_resource_directory, load_challenge
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +75,6 @@ def _fetch_to_directory(
         )
 
     source_dir = _challenge_resource_directory(challenge_id)
-    missing_paths = _missing_challenge_resources(challenge_id)
-    if missing_paths:
-        raise click.ClickException(
-            f"Bundled challenge '{challenge_id}' is incomplete; missing: "
-            f"{', '.join(missing_paths)}."
-        )
 
     try:
         challenge_dir.mkdir(parents=True)
