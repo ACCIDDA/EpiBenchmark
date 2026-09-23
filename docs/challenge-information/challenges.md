@@ -1,6 +1,6 @@
 # Challenge library
 
-EpiBenchmark ships with a library of predefined **challenges** (challenges have fixed hub, target, dates, horizons, quantiles, locations, and scoring settings). Each location uses 52 locations: the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded. Explore each challenge in our library below. You can list them locally via the command line with `epibench list`, and fully download a bundled challenge with `epibench fetch <challenge-id>`.
+EpiBenchmark ships with a library of predefined **challenges** (challenges have fixed hub, target, dates, horizons, quantiles, locations, and scoring requirements).  Explore each challenge in our library below. You can list them locally via the command line with `epibench list`, and fully download a bundled challenge with `epibench fetch <challenge-id>`.
 
 Click a challenge to expand its full definition.
 
@@ -12,7 +12,7 @@ Click a challenge to expand its full definition.
     | Reference dates | 2023-10-14 → 2024-05-04 (30 dates) |
     | Horizons | 0, 1, 2, 3 |
     | Quantiles | 0.05, 0.25, 0.5, 0.75, 0.95 |
-    | Locations | 52 |
+    | Locations | 50 U.S. states + Washington D.C. + U.S. (52 total) |
     | Baseline model | `FluSight-baseline` |
     | Scorecard | total wis, 50_coverage, 95_coverage |
 
@@ -36,7 +36,7 @@ Click a challenge to expand its full definition.
     | Reference dates | 2024-11-23 → 2025-05-31 (27 dates) |
     | Horizons | 0, 1, 2, 3 |
     | Quantiles | 0.05, 0.25, 0.5, 0.75, 0.95 |
-    | Locations | 52 |
+    | Locations | 50 U.S. states + Washington D.C. + U.S. (52 total) |
     | Baseline model | `FluSight-baseline` |
     | Scorecard | total wis, 50_coverage, 95_coverage |
 
@@ -50,7 +50,7 @@ Click a challenge to expand its full definition.
     | Reference dates | 2025-11-22 → 2026-05-30 (28 dates) |
     | Horizons | 0, 1, 2, 3 |
     | Quantiles | 0.05, 0.25, 0.5, 0.75, 0.95 |
-    | Locations | 52 |
+    | Locations | 50 U.S. states + Washington D.C. + U.S. (52 total) |
     | Baseline model | `FluSight-baseline` |
     | Scorecard | total wis, 50_coverage, 95_coverage |
 
@@ -62,6 +62,6 @@ Click a challenge to expand its full definition.
     | Reference dates | 2025-11-22 → 2026-05-30 (28 dates) |
     | Horizons | 0, 1, 2, 3 |
     | Quantiles | 0.05, 0.25, 0.5, 0.75, 0.95 |
-    | Locations | 52 |
+    | Locations | 50 U.S. states + Washington D.C. + U.S. (52 total) |
     | Baseline model | `RSVHub-baseline` |
     | Scorecard | total wis, 50_coverage, 95_coverage |

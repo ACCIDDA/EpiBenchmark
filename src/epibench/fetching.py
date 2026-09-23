@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import shutil
 import tempfile
-from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Optional
@@ -14,7 +13,11 @@ import click
 import pandas as pd
 
 from .challenge import Challenge, Task
-from .library import load_challenge
+from .library import (
+    _challenge_resource_directory,
+    _missing_challenge_resources,
+    load_challenge,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,16 +78,13 @@ def _fetch_to_directory(
             f"'{challenge_dir}' already exists; remove it or pick another --output-path."
         )
 
-    source_dir = (
-        resources.files("epibench")
-        .joinpath("challenges-library")
-        .joinpath(challenge_id)
-    )
-    if not source_dir.is_dir():
+    source_dir = _challenge_resource_directory(challenge_id)
+    missing_paths = _missing_challenge_resources(challenge_id)
+    if missing_paths:
         raise click.ClickException(
-            f"Bundled files are missing for challenge '{challenge_id}'."
+            f"Bundled challenge '{challenge_id}' is incomplete; missing: "
+            f"{', '.join(missing_paths)}."
         )
-    _validate_bundled_challenge_directory(source_dir, challenge_id)
 
     try:
         challenge_dir.mkdir(parents=True)
@@ -94,29 +94,6 @@ def _fetch_to_directory(
         raise
 
     logger.info("Challenge '%s' copied to %s", challenge_id, challenge_dir)
-
-
-def _validate_bundled_challenge_directory(
-    source_dir: Traversable,
-    challenge_id: str,
-) -> None:
-    """Require the files that constitute a fetchable bundled challenge."""
-    required_paths = [
-        f"{challenge_id}.json",
-        "agent.md",
-        "instruction.md",
-        "task_list.csv",
-    ]
-    missing_paths = [
-        path for path in required_paths if not source_dir.joinpath(path).is_file()
-    ]
-    if not source_dir.joinpath("gt").is_dir():
-        missing_paths.append("gt")
-    if missing_paths:
-        raise click.ClickException(
-            f"Bundled challenge '{challenge_id}' is incomplete; missing: "
-            f"{', '.join(missing_paths)}."
-        )
 
 
 def _copy_resource_tree(source_dir: Traversable, destination_dir: Path) -> None:

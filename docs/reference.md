@@ -19,8 +19,8 @@ Programmatic entry points behind the [challenge library commands](challenge-info
 `load_challenge(challenge_id: str) -> dict`
 : Load one challenge definition by id; raises if the id is not in the library.
 
-`is_published(definition: dict) -> bool`
-: `True` when a challenge has a real, non-placeholder Zenodo DOI.
+`list_challenges() -> list[dict]`
+: Return the `hub`, `target`, and `dates` summary fields for every challenge.
 
 ## `epibench.fetch`
 

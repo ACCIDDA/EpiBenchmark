@@ -49,8 +49,7 @@ def create(config_path: str | None) -> None:
     name="list",
     short_help="List all challenges available in the EpiBenchmark library.",
     help=(
-        "List every challenge bundled in the EpiBenchmark challenge library, "
-        "along with its Zenodo doi."
+        "List every challenge bundled in the EpiBenchmark challenge library."
     ),
 )
 def list_challenges() -> None:
