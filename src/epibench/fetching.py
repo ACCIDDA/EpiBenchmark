@@ -5,17 +5,23 @@ from __future__ import annotations
 import logging
 import shutil
 import tempfile
+from datetime import date
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Optional
 
 import click
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
 
 from .challenge import Challenge, Task
 from .library import _challenge_resource_directory, load_challenge
 
 logger = logging.getLogger(__name__)
+
+_AGGREGATED_GROUND_TRUTH = "gt.parquet"
 
 
 def fetch(challenge_id: str, output_path: Optional[str] = None) -> None:
@@ -78,7 +84,15 @@ def _fetch_to_directory(
 
     try:
         challenge_dir.mkdir(parents=True)
-        _copy_resource_tree(source_dir, challenge_dir)
+        _copy_resource_tree(
+            source_dir,
+            challenge_dir,
+            excluded_names={_AGGREGATED_GROUND_TRUTH},
+        )
+        _split_ground_truth(
+            source_dir.joinpath(_AGGREGATED_GROUND_TRUTH),
+            challenge_dir,
+        )
     except BaseException:
         shutil.rmtree(challenge_dir, ignore_errors=True)
         raise
@@ -86,10 +100,16 @@ def _fetch_to_directory(
     logger.info("Challenge '%s' copied to %s", challenge_id, challenge_dir)
 
 
-def _copy_resource_tree(source_dir: Traversable, destination_dir: Path) -> None:
+def _copy_resource_tree(
+    source_dir: Traversable,
+    destination_dir: Path,
+    *,
+    excluded_names: set[str] | None = None,
+) -> None:
     """Recursively copy a package-resource directory to the filesystem."""
+    excluded_names = excluded_names or set()
     for resource in source_dir.iterdir():
-        if resource.name.startswith("."):
+        if resource.name.startswith(".") or resource.name in excluded_names:
             continue
         destination = destination_dir / resource.name
         if resource.is_dir():
@@ -101,6 +121,51 @@ def _copy_resource_tree(source_dir: Traversable, destination_dir: Path) -> None:
                 destination.open("wb") as output_file,
             ):
                 shutil.copyfileobj(source_file, output_file)
+
+
+def _split_ground_truth(
+    aggregate_resource: Traversable,
+    challenge_dir: Path,
+) -> None:
+    """Expand one bundled ground-truth Parquet into its per-date fetch layout."""
+    task_list_path = _task_list_path(challenge_dir)
+    task_list = _read_task_list(task_list_path)
+    with aggregate_resource.open("rb") as aggregate_file:
+        ground_truth = pq.read_table(aggregate_file)
+
+    for task in task_list.itertuples(index=False):
+        reference_date = str(task.date).strip()
+        reference_value = pa.scalar(
+            date.fromisoformat(reference_date),
+            type=pa.date32(),
+        )
+        dated_ground_truth = ground_truth.filter(
+            pc.equal(ground_truth["reference_date"], reference_value)
+        ).drop(["reference_date"])
+        output_path = challenge_dir / str(task.path_to_gt).strip()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(
+            dated_ground_truth,
+            output_path,
+            compression="brotli",
+            compression_level=5,
+            use_dictionary=["location", "target"],
+            write_statistics=True,
+        )
+
+
+def _task_list_path(challenge_dir: Path) -> Path:
+    """Return the fetched CSV task-list path."""
+    return challenge_dir / "task_list.csv"
+
+
+def _read_task_list(task_list_path: Path) -> pd.DataFrame:
+    """Read a fetched task list while preserving its path and date strings."""
+    return pd.read_csv(
+        task_list_path,
+        dtype={"date": str, "path_to_gt": str},
+        keep_default_na=False,
+    )
 
 
 def _load_fetched_challenge(challenge_dir: Path, *, notes: str) -> Challenge:
@@ -120,17 +185,13 @@ def _load_fetched_challenge(challenge_dir: Path, *, notes: str) -> Challenge:
 
 def _load_ground_truth_tasks(challenge_dir: Path) -> list[Task]:
     """Load the ground-truth files referenced by a fetched task list."""
-    task_list_path = challenge_dir / "task_list.csv"
+    task_list_path = _task_list_path(challenge_dir)
     if not task_list_path.is_file():
         raise FileNotFoundError(
             f"Fetched challenge is missing its task list: {task_list_path}."
         )
 
-    task_list = pd.read_csv(
-        task_list_path,
-        dtype={"date": str, "path_to_gt": str},
-        keep_default_na=False,
-    )
+    task_list = _read_task_list(task_list_path)
     required_columns = {"date", "path_to_gt"}
     missing_columns = required_columns.difference(task_list.columns)
     if missing_columns:
@@ -139,11 +200,17 @@ def _load_ground_truth_tasks(challenge_dir: Path) -> list[Task]:
             f"{', '.join(sorted(missing_columns))}."
         )
     if task_list.empty:
-        raise ValueError("Fetched task_list.csv does not contain any ground-truth entries.")
+        raise ValueError(
+            "Fetched task_list.csv does not contain any ground-truth entries."
+        )
     if (task_list["date"].str.strip() == "").any():
-        raise ValueError("Fetched task_list.csv contains an empty reference date.")
+        raise ValueError(
+            "Fetched task_list.csv contains an empty reference date."
+        )
     if (task_list["path_to_gt"].str.strip() == "").any():
-        raise ValueError("Fetched task_list.csv contains an empty ground-truth path.")
+        raise ValueError(
+            "Fetched task_list.csv contains an empty ground-truth path."
+        )
 
     duplicate_dates = task_list.loc[task_list["date"].duplicated(), "date"].tolist()
     if duplicate_dates:

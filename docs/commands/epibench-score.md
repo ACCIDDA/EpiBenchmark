@@ -14,7 +14,7 @@ When using `epibench score` via a configuration file, you will have to set the f
 * `evaluation_start_date`: at which date you would like to start evaluating the model data (inclusive,  expressed as `YYYY-MM-DD`)
 * `evaluation_end_date`: at which date you would like to stop evaluating the model data (inclusive, expressed as `YYYY-MM-DD`)
 * `target`: which data target you would like to score. `epibench score` presently only scores one target at a time, and the target provided in your config must be an exact match for values found in your model data.
-* `models`: a dictionary where keys are the name you would like to use to refer to the model, and values are the paths to the model data. The paths may point to a single CSV file, or to a directory of CSV file(s); during processing, all data will be concatenated so it does not matter if CSVs are stored separately.
+* `models`: a dictionary where keys are the name you would like to use to refer to the model, and values are paths to model data. Each path may be a CSV file, a Parquet file, or a directory containing a mix of both. All selected files are concatenated during processing.
 * `baseline_model`: the name (exact character match) of the baseline model for your hub. The baseline model is necessary in the calculation of relative WIS.
 * `include_models` (optional): as a list, optionally pass the names of submitting models in your hub to include in scoring. Including an ensemble model can be useful for later visualization. You do not need to specify the baseline model in `include_models`; it is included automatically.
 * `output_path`: the path where you would like output to be saved
@@ -86,6 +86,7 @@ When scoring your model against a library challenge:
 ```bash
 epibench score epb_flu_inchosp_2024-2025_dev --model-data-path "my/model/data/" --model-name "my-model" --output-path "/Users/user/Desktop"
 ```
+`--model-data-path` accepts a CSV file, a Parquet file, or a directory containing both formats.
 
 When scoring model forecast data that does not belong to a library challenge:
 ```bash

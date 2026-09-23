@@ -11,6 +11,7 @@ import yaml
 
 from .hub_date_utils import validate_create_dates_against_hub_rounds
 from .path_utils import establish_hub_path, resolve_output_dir, resolve_path
+from .table_files import TABLE_SUFFIXES, table_files
 
 logger = logging.getLogger(__name__)
 
@@ -332,18 +333,18 @@ def build_score_parameters(
                 raise FileNotFoundError(
                     f"Path specified for '{model_name}' does not exist. Path {source}"
                 )
-            if resolved_source.suffix.lower() == ".csv":
+            if resolved_source.is_file() and resolved_source.suffix.lower() in TABLE_SUFFIXES:
                 data_files_list.append(resolved_source)
             elif resolved_source.is_dir():
-                data_files_list.extend(resolved_source.glob("*.csv"))
+                data_files_list.extend(table_files(resolved_source))
             else:
                 raise ValueError(
                     f"Path specified for '{model_name}' must either point to a "
-                    "directory of .csv files, or a single .csv file. "
+                    "directory of .csv/.parquet files, or a single .csv/.parquet file. "
                     f"Received: {source}"
                 )
         if not data_files_list:
-            raise ValueError("Found no CSV files in path(s) in config `models` key.")
+            raise ValueError("Found no CSV or Parquet files in path(s) in config `models` key.")
         model_info[model_name] = data_files_list
 
     return ScoreParameters(

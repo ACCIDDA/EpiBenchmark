@@ -74,7 +74,7 @@ epibench = [
     "challenges-library/*/*.json",
     "challenges-library/*/*.md",
     "challenges-library/*/*.csv",
-    "challenges-library/*/gt/*/*.parquet",
+    "challenges-library/*/*.parquet",
     "hub-dates-library/*.json",
 ]
 

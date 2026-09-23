@@ -48,7 +48,7 @@ Each row should follow this pattern:
 
 ## Model name and metadata
 
-Use `--model-name` to identify the model in the score output. For reproducibility, use the model name in the filename, for example `<model_name>.csv`, and keep a separate `<model_name>.metadata.json` file beside it with the model name, model description, model version, forecast-generation date, and the software or data versions used. Do not add metadata as extra CSV columns.
+Use `--model-name` to identify the model in the score output. For reproducibility, use the model name in the filename, for example `<model_name>.csv` or `<model_name>.parquet`, and keep a separate `<model_name>.metadata.json` file beside it with the model name, model description, model version, forecast-generation date, and the software or data versions used. Do not add metadata as extra CSV columns.
 
 ## Scoring
 
