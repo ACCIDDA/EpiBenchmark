@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 
+import pandas as pd
 import yaml
 
 from .hub_date_utils import validate_create_dates_against_hub_rounds
@@ -24,7 +25,7 @@ class ScoreParameters:
     evaluation_start_date: datetime
     evaluation_end_date: datetime
     target: str
-    model_info: dict[str, list[Path]]
+    model_info: dict[str, list[Path | pd.DataFrame]]
     include_models: list[str]
     baseline_model: str
 
@@ -254,7 +255,7 @@ def build_score_parameters(
     evaluation_start_date: str | date | datetime,
     evaluation_end_date: str | date | datetime,
     target: str,
-    models: Mapping[str, str | Path | Sequence[str | Path]],
+    models: Mapping[str, pd.DataFrame | str | Path | Sequence[str | Path]],
     baseline_model: str,
     include_models: Sequence[str] | None = None,
     base_dir: str | Path | None = None,
@@ -312,8 +313,11 @@ def build_score_parameters(
             "The 'models' key must be a non-empty dictionary of {'name': 'path'}."
         )
 
-    model_info: dict[str, list[Path]] = {}
+    model_info: dict[str, list[Path | pd.DataFrame]] = {}
     for model_name, model_sources in models.items():
+        if isinstance(model_sources, pd.DataFrame):
+            model_info[model_name] = [model_sources.copy()]
+            continue
         if isinstance(model_sources, (str, Path)):
             sources = [model_sources]
         elif isinstance(model_sources, Sequence):

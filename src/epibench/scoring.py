@@ -155,7 +155,7 @@ def _combine_models_for_scoring(
 
 
 def _resolve_model_info(
-    model_data_path: str,
+    model_data_path: str | Path,
     model_name: str,
 ) -> Tuple[str, Dict[str, List[Path]], Path]:
     """Normalize a library-route model path into the model_info shape used by scoring."""
@@ -192,17 +192,22 @@ def score(
     evaluation_start_date: str | date | datetime,
     evaluation_end_date: str | date | datetime,
     target: str,
-    models: Mapping[str, str | Path | Sequence[str | Path]],
+    models: Mapping[str, pd.DataFrame],
     baseline_model: str,
     include_models: Sequence[str] | None = None,
 ) -> ScoreResult:
     """Run standard (non-library-challenge) scoring from explicit inputs.
 
-    ``models`` maps each submitted model name to a CSV or Parquet file, a directory of those
-    files, or a sequence of those paths. The baseline and any ``include_models``
+    ``models`` maps each submitted model name to an in-memory Hubverse forecast
+    DataFrame. The baseline and any ``include_models``
     are loaded from the hub exactly as they are for YAML-configured CLI runs.
     Results remain in memory until :meth:`ScoreResult.save` is called.
     """
+    if not isinstance(models, Mapping) or not models:
+        raise ValueError("`models` must be a non-empty mapping of model names to DataFrames.")
+    for model_name, forecast_df in models.items():
+        if not isinstance(forecast_df, pd.DataFrame):
+            raise TypeError(f"`models[{model_name!r}]` must be a pandas DataFrame.")
     logger.info("Validating scoring inputs...")
     parameters = build_score_parameters(
         hub_path=hub_path,
@@ -337,7 +342,7 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
 
 def score_challenge(
     challenge_name: str,
-    model_data_path: str | Path,
+    model_data: pd.DataFrame,
     model_name: str,
 ) -> ScoreResult:
     """Score a model against a bundled EpiBench library challenge.
@@ -347,13 +352,37 @@ def score_challenge(
     included, ground truth is merged, and both scores and the challenge-specific
     scorecard are calculated.
 
-    Results remain in memory until :meth:`ScoreResult.save` is called.
+    ``model_data`` is an in-memory Hubverse forecast DataFrame. Results remain
+    in memory until :meth:`ScoreResult.save` is called.
     """
+    if not isinstance(model_data, pd.DataFrame):
+        raise TypeError("`model_data` must be a pandas DataFrame.")
+    return _score_challenge_with_model_info(
+        challenge_name,
+        {model_name: [model_data.copy()]},
+        model_name,
+    )
+
+
+def _score_challenge_from_path(
+    challenge_name: str,
+    model_data_path: str | Path,
+    model_name: str,
+) -> ScoreResult:
+    """Keep the CLI's file-based challenge scoring route."""
+    _, model_info, _ = _resolve_model_info(model_data_path, model_name)
+    return _score_challenge_with_model_info(challenge_name, model_info, model_name)
+
+
+def _score_challenge_with_model_info(
+    challenge_name: str,
+    model_info: dict[str, list[Path | pd.DataFrame]],
+    model_name: str,
+) -> ScoreResult:
+    """Score either in-memory or CLI file inputs against a library challenge."""
     logger.info("Loading challenge library...")
     challenge_definition = load_library_challenge(challenge_name)
     logger.info(f"Successfully loaded library challenge: {challenge_name} ✅")
-
-    model_name, model_info, _ = _resolve_model_info(model_data_path, model_name)
 
     # set quantiles
     quantiles = challenge_definition["quantiles"]

@@ -286,7 +286,7 @@ def _extra_models(
 
 def extract_model_data_details(
         hub_path: Path,
-        model_info: dict, 
+        model_info: dict[str, list[Path | pd.DataFrame]],
         include_models: list,
         eval_start_date: str, 
         eval_end_date: str, 
@@ -302,7 +302,7 @@ def extract_model_data_details(
 
     Args:
         hub_path: A Path to the hub corresponding to model data.
-        model_info: A dict where keys are model names and values are lists of
+        model_info: Model names mapped to lists of in-memory DataFrames or
             paths to CSV or Parquet files.
         include_models: List of model names from hub you want included
             in your scoring output. 
@@ -364,24 +364,35 @@ def extract_model_data_details(
         excluded_due_to_eval_range = []
         excluded_due_to_target = []
         excluded_due_to_challenge_facets = []
-        for data_path in model_info[model]:
+        for source_number, data_source in enumerate(model_info[model], start=1):
+            source_name = (
+                f"{model} DataFrame {source_number}"
+                if isinstance(data_source, pd.DataFrame)
+                else data_source.name
+            )
             record_filtered_facets(
                 filtered_facets_by_file=filtered_facets_by_file,
-                input_file=data_path.name,
+                input_file=source_name,
                 facets=[],
             )
 
             # read in as pd.DataFrame, ensure non-empty
-            df = read_table(data_path, string_columns=tuple(MODEL_DATA_STRING_COLUMNS))
+            if isinstance(data_source, pd.DataFrame):
+                df = data_source.copy()
+                for column in MODEL_DATA_STRING_COLUMNS:
+                    if column in df:
+                        df[column] = df[column].astype("string")
+            else:
+                df = read_table(data_source, string_columns=tuple(MODEL_DATA_STRING_COLUMNS))
             if df.empty:
                 if excluded_files is not None:
-                    excluded_files.add(data_path.name)
+                    excluded_files.add(source_name)
                 continue # skip to next if empty (non-fatal)
 
             # check for required columns
             missing = set(REQUIRED_MODEL_DATA_COLUMNS) - set(df.columns)
             if missing:
-                raise ValueError(f"{model} data file {data_path.name} is missing columns: {missing}.")
+                raise ValueError(f"{model} data source {source_name} is missing columns: {missing}.")
 
             # datatype assertions, ensure these are read in as strings
             df = df.astype(
@@ -399,7 +410,7 @@ def extract_model_data_details(
 
             # add column for model name (`model`)
             df['model'] = model 
-            df["_source_file"] = data_path.name
+            df["_source_file"] = source_name
 
             # keep only the requested target and report any others being excluded
             current_model_targets = set(df["target"])
@@ -407,14 +418,14 @@ def extract_model_data_details(
             if excluded_targets:
                 record_filtered_facets(
                     filtered_facets_by_file=filtered_facets_by_file,
-                    input_file=data_path.name,
+                    input_file=source_name,
                     facets=["target"],
                 )
             df = df[df["target"] == target].copy()
             if df.empty:
-                excluded_due_to_target.append(data_path.name)
+                excluded_due_to_target.append(source_name)
                 if excluded_files is not None:
-                    excluded_files.add(data_path.name)
+                    excluded_files.add(source_name)
                 continue
             
             # filter entries s.t. target_end_date only spans the eval start/end date 
@@ -424,20 +435,20 @@ def extract_model_data_details(
                 if (~in_eval_range_mask).any():
                     record_filtered_facets(
                         filtered_facets_by_file=filtered_facets_by_file,
-                        input_file=data_path.name,
+                        input_file=source_name,
                         facets=["target_end_date"],
                     )
                 df = df[in_eval_range_mask]
             if df.empty:
-                excluded_due_to_eval_range.append(data_path.name)
+                excluded_due_to_eval_range.append(source_name)
                 if excluded_files is not None:
-                    excluded_files.add(data_path.name)
+                    excluded_files.add(source_name)
                 continue
 
             # filter out only output_type == quantile
             df = df[df['output_type'] == 'quantile']
             if df.empty:
-                raise ValueError(f"{model} data file {data_path.name} has no entries with output_type 'quantile'.")
+                raise ValueError(f"{model} data source {source_name} has no entries with output_type 'quantile'.")
             df = df.drop(columns=['output_type'])
 
             # do strict processing if it is a library challenge run 
@@ -446,16 +457,16 @@ def extract_model_data_details(
                 df = _filter_to_required_challenge_facets(
                     df=df,
                     model_name=model,
-                    csv_name=data_path.name,
+                    csv_name=source_name,
                     normalized_required_reference_dates=normalized_required_reference_dates,
                     normalized_required_locations=normalized_required_locations,
                     normalized_required_horizons=normalized_required_horizons,
                     filtered_facets_by_file=filtered_facets_by_file,
                 )
                 if df.empty:
-                    excluded_due_to_challenge_facets.append(data_path.name)
+                    excluded_due_to_challenge_facets.append(source_name)
                     if excluded_files is not None:
-                        excluded_files.add(data_path.name)
+                        excluded_files.add(source_name)
                     continue
             # properly rename the columns that need to be renamed (moving into scoringutils conventions)
             df = df.rename(columns={'output_type_id': 'quantile_level', 'value': 'predicted'})
