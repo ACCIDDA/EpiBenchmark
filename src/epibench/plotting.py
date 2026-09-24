@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from importlib import resources
 import logging
 from pathlib import Path
 
@@ -13,9 +14,7 @@ import pandas as pd
 
 from .build_plots import build_summary_figures, read_scores, validate_scores
 from .load_library_challenge import load_library_challenge
-from .path_utils import establish_hub_path, resolve_output_dir, resolve_path
-from .prep_complete_models_for_plotting import prep_complete_models_for_plotting
-from .scoring_logic import score_forecasts
+from .path_utils import resolve_output_dir, resolve_path
 
 
 logger = logging.getLogger(__name__)
@@ -94,53 +93,34 @@ def plot_challenge(
     non_baseline_models = set(
         users_scores.loc[users_scores["model"] != baseline_model, "model"]
     )
-    # necessary early-fail to prevent failure at later logic: users_model_name = next(iter(non_baseline_models))
-    if len(non_baseline_models) != 1:
+    if not non_baseline_models:
         raise ValueError(
-            "Please supply scores for exactly one non-baseline model. "
-            f"Received: {non_baseline_models} "
-            f"(baseline model {baseline_model} does not count towards model total)."
+            "Please supply scores for at least one non-baseline model. "
+            f"Baseline model {baseline_model} does not count towards model total."
         )
-    users_model_name = next(iter(non_baseline_models))
 
     output_dir = resolve_output_dir(
         output_path or Path.cwd(),
         files_to_save=[PLOTS_FILENAME],
     )
 
-    logger.info("Retrieving external model data...")
-    hub_path = establish_hub_path(hub_path_value=challenge_definition["hub_path"])
-    complete_models = list(challenge_definition["complete_models"])
-    if users_model_name in complete_models:
-        complete_models.remove(users_model_name)
-
-    complete_models_data = prep_complete_models_for_plotting(
-        hub_path=hub_path,
-        complete_models=complete_models,
-        baseline_model=baseline_model,
-        valid_locations=challenge_definition["locations"],
-        valid_quantiles=challenge_definition["quantiles"],
-        valid_horizons=challenge_definition["horizons"],
-        valid_reference_dates=challenge_definition["reference_dates"],
-        valid_target=challenge_definition["target"],
+    scores_filename = challenge_definition["complete_model_scores_file"]
+    scores_resource = (
+        resources.files("epibench")
+        .joinpath("challenges-library", Path(challenge_name).stem, scores_filename)
     )
+    logger.info("Loading bundled complete-model scores from %s", scores_resource)
+    with scores_resource.open("rb") as scores_file:
+        complete_models_scores = validate_scores(pd.read_parquet(scores_file))
 
-    complete_models_scores = score_forecasts(
-        complete_models_data,
-        baseline_model=baseline_model,
-    )
-    complete_models_scores = complete_models_scores[
-        complete_models_scores["model"] != baseline_model
-    ]
+    users_scores = users_scores.copy()
+    users_scores["model"] = users_scores["model"] + "-USER-PROVIDED"
 
     combined_scores = pd.concat(
         [complete_models_scores, users_scores],
         ignore_index=True,
     )
-    combined_scores["reference_date"] = pd.to_datetime(
-        combined_scores["reference_date"],
-        errors="raise",
-    )
+    combined_scores = validate_scores(combined_scores)
 
     logger.info("Building figures...")
     figures = build_summary_figures(combined_scores)

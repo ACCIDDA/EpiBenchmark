@@ -49,8 +49,7 @@ def create(config_path: str | None) -> None:
     name="list",
     short_help="List all challenges available in the EpiBenchmark library.",
     help=(
-        "List every challenge bundled in the EpiBenchmark challenge library, "
-        "along with its Zenodo doi."
+        "List every challenge bundled in the EpiBenchmark challenge library."
     ),
 )
 def list_challenges() -> None:
@@ -62,10 +61,10 @@ def list_challenges() -> None:
 
 # epibench fetch
 @cli.command(
-    short_help="Download a challenge's data files from Zenodo.",
+    short_help="Copy a bundled challenge to a local directory.",
     help=(
-        "Download the data files for a challenge in the EpiBenchmark library "
-        "from Zenodo into a local folder named after the challenge."
+        "Copy a challenge from the EpiBenchmark challenge library into a "
+        "local folder named after the challenge."
     ),
 )
 @click.argument("challenge_id", required=True)
@@ -74,7 +73,7 @@ def list_challenges() -> None:
     type=str,
     required=False,
     help=(
-        "Directory to download the challenge into; a subfolder named after the "
+        "Directory to copy the challenge into; a subfolder named after the "
         "challenge is created inside it. Defaults to the current directory."
     ),
 )

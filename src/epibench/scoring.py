@@ -26,10 +26,12 @@ from .scoring_summary import (
     format_extra_model_facet_coverage_warning,
     format_extra_model_facet_paring_summary,
     format_excluded_files_summary,
+    format_missing_ground_truth_units_summary,
     format_missing_forecast_units_warning,
 )
 from .scorecard_functions import custom_scorecard
 from .scoring_ground_truth import ScoringGroundTruth
+from .table_files import TABLE_SUFFIXES, table_files
 
 logger = logging.getLogger(__name__)
 
@@ -163,25 +165,22 @@ def _resolve_model_info(
         raise FileNotFoundError(
             f"--model-data-path {resolved_model_data_path} does not exist."
         )
-    # fail if it is a file but not a .csv
     if resolved_model_data_path.is_file():
-        if resolved_model_data_path.suffix.lower() != ".csv":
+        if resolved_model_data_path.suffix.lower() not in TABLE_SUFFIXES:
             raise ValueError(
-                "--model-data-path must point to a .csv file or a directory of .csv files."
+                "--model-data-path must point to a .csv/.parquet file or a directory of those files."
             )
         model_info = {model_name: [resolved_model_data_path]}
-    # fail if it is a dir with no .csvs
     elif resolved_model_data_path.is_dir():
-        csv_paths = sorted(resolved_model_data_path.glob("*.csv"))
-        if not csv_paths:
+        paths = table_files(resolved_model_data_path)
+        if not paths:
             raise ValueError(
-                f"No CSV files were found at --model-data-path {resolved_model_data_path}."
+                f"No CSV or Parquet files were found at --model-data-path {resolved_model_data_path}."
             )
-        model_info = {model_name: csv_paths}
-    # fail if neither dir nor .csv
+        model_info = {model_name: paths}
     else:
         raise ValueError(
-            "--model-data-path must point to a .csv file or a directory of .csv files."
+            "--model-data-path must point to a .csv/.parquet file or a directory of those files."
         )
 
     return model_name, model_info, resolved_model_data_path
@@ -199,7 +198,7 @@ def score(
 ) -> ScoreResult:
     """Run standard (non-library-challenge) scoring from explicit inputs.
 
-    ``models`` maps each submitted model name to a CSV file, a directory of CSV
+    ``models`` maps each submitted model name to a CSV or Parquet file, a directory of those
     files, or a sequence of those paths. The baseline and any ``include_models``
     are loaded from the hub exactly as they are for YAML-configured CLI runs.
     Results remain in memory until :meth:`ScoreResult.save` is called.
@@ -313,6 +312,7 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
     df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
         columns=["target"]
     )
+    missing_ground_truth_units_summary = format_missing_ground_truth_units_summary(df)
 
     logger.info("Scoring model data...")
     scores = score_forecasts(df, baseline_model=parameters.baseline_model)
@@ -322,6 +322,7 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
         target=parameters.target,
         target_end_dates=global_target_end_dates,
         missing_forecast_units_warning=summary_warning_blocks,
+        missing_ground_truth_units_summary=missing_ground_truth_units_summary,
     )
     summary = format_excluded_files_summary(**summary_arguments)
     logger.info("Process executed successfully to end 🎉.")
@@ -411,8 +412,6 @@ def score_challenge(
         quantiles=quantiles,
         locations=challenge_definition["locations"],
     )
-    summary = format_excluded_files_summary(**summary_arguments)
-
     for model_name_key, forecast_df in model_dict.items():
         if "_source_file" in forecast_df.columns:
             model_dict[model_name_key] = forecast_df.drop(columns=["_source_file"])
@@ -431,6 +430,10 @@ def score_challenge(
     df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
         columns=["target"]
     )
+    summary_arguments["missing_ground_truth_units_summary"] = (
+        format_missing_ground_truth_units_summary(df)
+    )
+    summary = format_excluded_files_summary(**summary_arguments)
 
     # score forecasts; persistence is handled by ScoreResult.save().
     logger.info("Scoring model data...")

@@ -24,14 +24,16 @@ class Task:
 @dataclass
 class Challenge:
     """
-    Instructions* and ground-truth tasks for a fetched or created challenge.
+    Metadata and ground-truth tasks for a fetched or created challenge.
 
-    *``instructions`` is populated for library challenges and is ``None`` for
-    challenges created directly from hub ground truth (i.e., the "config style" route).
+    ``instructions`` and ``notes`` are populated for library challenges and are
+    ``None`` for challenges created directly from hub ground truth (i.e., the
+    "config style" route).
     """
 
     instructions: str | None
     tasks: list[Task]
+    notes: str | None = None
 
     def save(self, output_path: str | Path | None = None) -> None:
         """Save every ground-truth task beneath ``<output_path>/gt/``.

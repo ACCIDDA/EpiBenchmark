@@ -81,7 +81,7 @@ def _create_challenge(parameters: CreateParameters) -> Challenge:
                 reference_date,
             )
 
-    return Challenge(instructions=None, tasks=tasks)
+    return Challenge(instructions=None, tasks=tasks, notes=None)
 
 
 def _create_from_config(config_path: str) -> None:

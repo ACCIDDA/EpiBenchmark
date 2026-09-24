@@ -9,6 +9,7 @@ from hubdata import connect_hub
 
 from .horizon_utils import normalize_horizon_strings, sort_horizon_strings
 from .scoring_summary import record_filtered_facets
+from .table_files import read_table
 
 REQUIRED_MODEL_DATA_COLUMNS = ['reference_date', 'target', 'horizon', 'target_end_date', 'location', 'output_type', 'output_type_id', 'value']
 MODEL_DATA_STRING_COLUMNS = {
@@ -302,7 +303,7 @@ def extract_model_data_details(
     Args:
         hub_path: A Path to the hub corresponding to model data.
         model_info: A dict where keys are model names and values are lists of
-            paths to CSV files.
+            paths to CSV or Parquet files.
         include_models: List of model names from hub you want included
             in your scoring output. 
         eval_start_date: YYYY-MM-DD date when evaluation should begin
@@ -363,24 +364,24 @@ def extract_model_data_details(
         excluded_due_to_eval_range = []
         excluded_due_to_target = []
         excluded_due_to_challenge_facets = []
-        for csv_path in model_info[model]:
+        for data_path in model_info[model]:
             record_filtered_facets(
                 filtered_facets_by_file=filtered_facets_by_file,
-                input_file=csv_path.name,
+                input_file=data_path.name,
                 facets=[],
             )
 
             # read in as pd.DataFrame, ensure non-empty
-            df = pd.read_csv(csv_path, dtype=MODEL_DATA_STRING_COLUMNS)
+            df = read_table(data_path, string_columns=tuple(MODEL_DATA_STRING_COLUMNS))
             if df.empty:
                 if excluded_files is not None:
-                    excluded_files.add(csv_path.name)
+                    excluded_files.add(data_path.name)
                 continue # skip to next if empty (non-fatal)
 
             # check for required columns
             missing = set(REQUIRED_MODEL_DATA_COLUMNS) - set(df.columns)
             if missing:
-                raise ValueError(f"{model} CSV data file {csv_path.name} is missing columns: {missing}.")
+                raise ValueError(f"{model} data file {data_path.name} is missing columns: {missing}.")
 
             # datatype assertions, ensure these are read in as strings
             df = df.astype(
@@ -398,7 +399,7 @@ def extract_model_data_details(
 
             # add column for model name (`model`)
             df['model'] = model 
-            df["_source_file"] = csv_path.name
+            df["_source_file"] = data_path.name
 
             # keep only the requested target and report any others being excluded
             current_model_targets = set(df["target"])
@@ -406,14 +407,14 @@ def extract_model_data_details(
             if excluded_targets:
                 record_filtered_facets(
                     filtered_facets_by_file=filtered_facets_by_file,
-                    input_file=csv_path.name,
+                    input_file=data_path.name,
                     facets=["target"],
                 )
             df = df[df["target"] == target].copy()
             if df.empty:
-                excluded_due_to_target.append(csv_path.name)
+                excluded_due_to_target.append(data_path.name)
                 if excluded_files is not None:
-                    excluded_files.add(csv_path.name)
+                    excluded_files.add(data_path.name)
                 continue
             
             # filter entries s.t. target_end_date only spans the eval start/end date 
@@ -423,20 +424,20 @@ def extract_model_data_details(
                 if (~in_eval_range_mask).any():
                     record_filtered_facets(
                         filtered_facets_by_file=filtered_facets_by_file,
-                        input_file=csv_path.name,
+                        input_file=data_path.name,
                         facets=["target_end_date"],
                     )
                 df = df[in_eval_range_mask]
             if df.empty:
-                excluded_due_to_eval_range.append(csv_path.name)
+                excluded_due_to_eval_range.append(data_path.name)
                 if excluded_files is not None:
-                    excluded_files.add(csv_path.name)
+                    excluded_files.add(data_path.name)
                 continue
 
             # filter out only output_type == quantile
             df = df[df['output_type'] == 'quantile']
             if df.empty:
-                raise ValueError(f"{model} CSV data file {csv_path.name} has no entries with output_type 'quantile'.")
+                raise ValueError(f"{model} data file {data_path.name} has no entries with output_type 'quantile'.")
             df = df.drop(columns=['output_type'])
 
             # do strict processing if it is a library challenge run 
@@ -445,16 +446,16 @@ def extract_model_data_details(
                 df = _filter_to_required_challenge_facets(
                     df=df,
                     model_name=model,
-                    csv_name=csv_path.name,
+                    csv_name=data_path.name,
                     normalized_required_reference_dates=normalized_required_reference_dates,
                     normalized_required_locations=normalized_required_locations,
                     normalized_required_horizons=normalized_required_horizons,
                     filtered_facets_by_file=filtered_facets_by_file,
                 )
                 if df.empty:
-                    excluded_due_to_challenge_facets.append(csv_path.name)
+                    excluded_due_to_challenge_facets.append(data_path.name)
                     if excluded_files is not None:
-                        excluded_files.add(csv_path.name)
+                        excluded_files.add(data_path.name)
                     continue
             # properly rename the columns that need to be renamed (moving into scoringutils conventions)
             df = df.rename(columns={'output_type_id': 'quantile_level', 'value': 'predicted'})
@@ -488,7 +489,7 @@ def extract_model_data_details(
                 )
                 raise ValueError(
                     f"No valid data found for model '{model}' after filtering. "
-                    f"Ensure CSV files contain the requested target [{target}] and valid hubverse "
+                    f"Ensure CSV or Parquet files contain the requested target [{target}] and valid hubverse "
                     f"data with target_end_date values between {eval_start_date} and {eval_end_date}."
                     f"{excluded_target_files_msg}{excluded_files_msg}"
                     f"{excluded_challenge_facet_files_msg}"

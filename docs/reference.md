@@ -1,8 +1,15 @@
 # API reference
 
-#### coming soon 
+#### coming soon (out of date)
 
 Programmatic entry points behind the [challenge library commands](challenge-information/challenges.md).
+
+## `epibench.Challenge`
+
+`notes: str | None`
+: Notes from the bundled definition of a library challenge. Access them with
+  `challenge.notes` after calling `epibench.fetch_challenge(...)`. This value is
+  `None` for challenges created directly with `epibench.create(...)`.
 
 ## `epibench.library`
 
@@ -12,10 +19,10 @@ Programmatic entry points behind the [challenge library commands](challenge-info
 `load_challenge(challenge_id: str) -> dict`
 : Load one challenge definition by id; raises if the id is not in the library.
 
-`is_published(definition: dict) -> bool`
-: `True` when a challenge has a real Zenodo DOI (i.e. data available to download).
+`list_challenges() -> list[dict]`
+: Return the `hub`, `target`, and `dates` summary fields for every challenge.
 
 ## `epibench.fetch`
 
 `fetch(challenge_id: str, output_path: str | None = None) -> None`
-: Download a challenge's data files from Zenodo into `<output_path>/<challenge_id>/` (defaults to the current directory), unzipping archives and keeping a copy of the challenge definition.
+: Copy a bundled challenge into `<output_path>/<challenge_id>/` (defaults to the current directory).

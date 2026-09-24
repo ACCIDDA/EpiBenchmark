@@ -370,6 +370,73 @@ def format_extra_model_facet_paring_summary(
     return "\n".join(lines)
 
 
+def format_missing_ground_truth_units_summary(scoring_data: pd.DataFrame) -> str:
+    """Describe forecast units omitted because their observed value is missing."""
+    forecast_unit_columns = [
+        "model",
+        "reference_date",
+        "target_end_date",
+        "location",
+        "horizon",
+    ]
+    missing_observed_units = scoring_data.loc[
+        scoring_data["observed"].isna(),
+        forecast_unit_columns,
+    ].drop_duplicates()
+
+    lines = [
+        "## Forecast units omitted because ground truth was unavailable",
+        "",
+    ]
+    if missing_observed_units.empty:
+        lines.append("None")
+        return "\n".join(lines)
+
+    records = []
+    for unit in missing_observed_units.itertuples(index=False, name=None):
+        records.append(
+            {
+                "model": str(unit[0]),
+                "reference_date": pd.Timestamp(unit[1]).strftime("%Y-%m-%d"),
+                "target_end_date": pd.Timestamp(unit[2]).strftime("%Y-%m-%d"),
+                "location": str(unit[3]),
+                "horizon": str(unit[4]),
+            }
+        )
+
+    def _sort_key(unit: Dict[str, str]) -> Tuple[object, ...]:
+        horizon = unit["horizon"]
+        horizon_sort = (
+            (0, int(horizon))
+            if horizon.lstrip("-").isdigit()
+            else (1, horizon)
+        )
+        return (
+            unit["model"],
+            unit["reference_date"],
+            unit["target_end_date"],
+            unit["location"],
+            horizon_sort,
+        )
+
+    records.sort(key=_sort_key)
+    lines.extend(
+        [
+            f"{len(records)} forecast unit(s) were not scored because the matching ground-truth `observed` value was NA. All quantile rows for each unit were omitted.",
+            "",
+            "| model | reference_date | target_end_date | location | horizon |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for unit in records:
+        lines.append(
+            f"| {unit['model']} | {unit['reference_date']} | "
+            f"{unit['target_end_date']} | {unit['location']} | "
+            f"{unit['horizon']} |"
+        )
+    return "\n".join(lines)
+
+
 def format_excluded_files_summary(
     excluded_files: Iterable[str],
     target: str,
@@ -379,8 +446,9 @@ def format_excluded_files_summary(
     quantiles: Optional[Iterable[object]] = None,
     locations: Optional[Iterable[str]] = None,
     missing_forecast_units_warning: Optional[str] = None,
+    missing_ground_truth_units_summary: Optional[str] = None,
 ) -> str:
-    """Build a readable text summary of files excluded from scoring."""
+    """Build a readable summary of exclusions from a scoring run."""
 
     def _format_date_values(date_values: Iterable[str]) -> str:
         """Render date-like values as YYYY-MM-DD strings."""
@@ -391,6 +459,9 @@ def format_excluded_files_summary(
 
     if missing_forecast_units_warning:
         lines.extend([missing_forecast_units_warning, "", "---", ""])
+
+    if missing_ground_truth_units_summary:
+        lines.extend([missing_ground_truth_units_summary, "", "---", ""])
 
     lines.extend(["## Files excluded from scoring", ""])
 
@@ -462,6 +533,7 @@ def write_excluded_files_summary(
     quantiles: Optional[Iterable[object]] = None,
     locations: Optional[Iterable[str]] = None,
     missing_forecast_units_warning: Optional[str] = None,
+    missing_ground_truth_units_summary: Optional[str] = None,
     filename: str = FILTER_SUMMARY_FILENAME,
 ) -> Path:
     """Write the excluded-files summary text file and return its path."""
@@ -483,6 +555,7 @@ def write_excluded_files_summary(
             quantiles=quantiles,
             locations=locations,
             missing_forecast_units_warning=missing_forecast_units_warning,
+            missing_ground_truth_units_summary=missing_ground_truth_units_summary,
         ) + "\n",
         encoding="utf-8",
     )

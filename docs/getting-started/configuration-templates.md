@@ -53,8 +53,8 @@ evaluation_end_date: "YYYY-MM-DD" # dates are inclusive on both ends [,]
 target: "wk inc flu hosp" # only scores one target at a time; match must be exact
 
 models: {
-    "name-of-model1": "/path/to/model1-data", # paths can point to a folder of CSVs
-    "name-of-model2": "/path/to/model2-data", # or to a single CSV;
+    "name-of-model1": "/path/to/model1-data", # folder with CSV and/or Parquet files
+    "name-of-model2": "/path/to/model2-data.parquet", # or a single file;
     "name-of-model3": "/path/to/model3-data" # data will be concatenated regardless
 } 
 # non-quantile output will be filtered out
