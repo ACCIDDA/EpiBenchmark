@@ -127,7 +127,7 @@ def score(
 ) -> None:
     """Run the EpiBenchmark score pipeline."""
     from .scoring import _score_from_config as run_score_from_config
-    from .scoring import score_challenge as run_score_challenge
+    from .scoring import _score_challenge_from_path as run_score_challenge
 
     logging.basicConfig(level=logging.INFO)
 

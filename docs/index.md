@@ -30,12 +30,6 @@ EpiBenchmark exposes three workflows:
 - `epibench score`: score model forecasts with a WIS (includes over prediction, under prediction, coverage, etc.) 
 - `epibench plot`: create an array of plots to visualize model performance (`epibench plot`)
 
-## Funding
-
-This project was made possible by the Insight Net cooperative agreement `CDC-RFA-FT-23-0069` from the CDC's Center for Forecasting and Outbreak Analytics. Its contents are solely the responsibility of the authors and do not necessarily represent the official views of the Centers for Disease Control and Prevention.
-
-EpiBenchmark is being developed at UNC Chapel Hill through [ACCIDDA](https://www.accidda.org/), the Atlantic Coast Center for Infectious Disease Dynamics and Analytics.
-
 ## Get started!
 ### Overview
 - [Overview](getting-started/overview.md) – understand the scope and usage of EpiBenchmark
@@ -45,6 +39,12 @@ EpiBenchmark is being developed at UNC Chapel Hill through [ACCIDDA](https://www
 
 ### Installation_Longleaf Guide
 - [Installation_Longleaf](getting-started/installation_longleaf.md) - install the EpiBenchmark package on UNC Longleaf Cluster
+
+## Funding
+
+This project was made possible by the Insight Net cooperative agreement `CDC-RFA-FT-23-0069` from the CDC's Center for Forecasting and Outbreak Analytics. Its contents are solely the responsibility of the authors and do not necessarily represent the official views of the Centers for Disease Control and Prevention.
+
+EpiBenchmark is being developed at UNC Chapel Hill through [ACCIDDA](https://www.accidda.org/), the Atlantic Coast Center for Infectious Disease Dynamics and Analytics.
 
 ## Attribution
 
