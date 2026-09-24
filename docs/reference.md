@@ -87,17 +87,20 @@ Run scoring with no relationship to a library challenge. Model data will not req
 | `hub_path` | `str \| Path` | Path to a local hub directory or link to a GitHub hub repository URL. |
 | `evaluation_start_date`, `evaluation_end_date` | `str \| date \| datetime` | Inclusive evaluation window; strings use `YYYY-MM-DD`. The end must be at least seven days after the start. Evaluation windows should span the `target_end_dates` of your model forecasts, not the reference dates. |
 | `target` | `str` | Data target to score. |
-| `models` | `Mapping[str, str \| Path \| Sequence[str \| Path]]` | Submitted model name mapped to a CSV or Parquet file, a directory of those files, or a sequence of paths. |
+| `models` | `Mapping[str, pandas.DataFrame]` | Submitted model name mapped to an in-memory DataFrame of Hubverse forecast data. |
 | `baseline_model` | `str` | Name of the baseline model for your hub (used to calculate relative WIS). |
 | `include_models` | `Sequence[str] \| None` | Names of other models from your hub you would like included in your scoring output. |
 
 ```python
+import pandas as pd
+
+forecast_df = pd.read_csv("/path/to/forecasts.csv", dtype={"location": str})
 result = epibench.score(
     hub_path="/path/to/hub",
     evaluation_start_date="2024-11-23",
     evaluation_end_date="2024-12-21",
     target="wk inc flu hosp",
-    models={"my-model": "/path/to/forecasts"},
+    models={"my-model": forecast_df},
     baseline_model="FluSight-baseline",
 )
 print(result.summary)
@@ -107,14 +110,17 @@ result.save("results/scoring")
 
 Standard scoring sets `mode` to `"standard"` and `scorecard` to `None`.
 
-### `score_challenge(challenge_name: str, model_data_path: str | Path, model_name: str) -> ScoreResult`
+### `score_challenge(challenge_name: str, model_data: pandas.DataFrame, model_name: str) -> ScoreResult`
 
-Run scoring for a model against a library challenge. `challenge_name` is a valid EpiBenchmark challenge name, `model_data_path` is a CSV or Parquet file or directory of those files, and `model_name` is the name that you would like to use to identify the submitted model. The challenge supplies the target, dates, required forecast facets, quantiles, and baseline. This route validates complete challenge coverage and computes a one-row scorecard. 
+Run scoring for a model against a library challenge. `challenge_name` is a valid EpiBenchmark challenge name, `model_data` is an in-memory DataFrame of Hubverse forecast data, and `model_name` is the name that you would like to use to identify the submitted model. The challenge supplies the target, dates, required forecast facets, quantiles, and baseline. This route validates complete challenge coverage and computes a one-row scorecard. 
 
 ```python
+import pandas as pd
+
+forecast_df = pd.read_csv("/path/to/forecasts.csv", dtype={"location": str})
 result = epibench.score_challenge(
     "epb_flu_inchosp_2024-2025_dev",
-    "/path/to/forecasts",
+    forecast_df,
     "name-of-my-model",
 )
 print(result.summary)
@@ -132,7 +138,7 @@ result.save("results/challenge-scoring")
 | `scores` | `pandas.DataFrame` | Per-forecast-unit scores, including the baseline. |
 | `scorecard` | `pandas.DataFrame \| None` | One-row challenge scorecard; `None` for non-library challenge scoring. |
 | `summary` | `str` | Markdown-formatted summary of filtering and exclusions. |
-| `excluded_files` | `frozenset[str]` | Forecast files excluded during loading or validation. |
+| `excluded_files` | `frozenset[str]` | Forecast data sources excluded during loading or validation. |
 | `output_dir`, `scores_path`, `scorecard_path`, `summary_path` | `Path \| None` | Locations populated by `save()`; initially `None`. `scorecard_path` stays `None` for standard scoring. |
 
 #### `ScoreResult.save(output_path: str | Path | None = None) -> None`
