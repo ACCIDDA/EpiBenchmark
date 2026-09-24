@@ -73,7 +73,7 @@ def _fetch_to_directory(
     challenge_dir: Path,
 ) -> None:
     """Copy a bundled library challenge into an exact destination."""
-    load_challenge(challenge_name)
+    definition = load_challenge(challenge_name)
     challenge_id = Path(challenge_name).stem
     if challenge_dir.exists():
         raise click.ClickException(
@@ -87,7 +87,10 @@ def _fetch_to_directory(
         _copy_resource_tree(
             source_dir,
             challenge_dir,
-            excluded_names={_AGGREGATED_GROUND_TRUTH},
+            excluded_names={
+                _AGGREGATED_GROUND_TRUTH,
+                definition["complete_model_scores_file"],
+            },
         )
         _split_ground_truth(
             source_dir.joinpath(_AGGREGATED_GROUND_TRUTH),
