@@ -80,7 +80,7 @@ Much like the command line scoring interface, there are two ways to score quanti
 
 ### `read_forecasts(path: str | Path) -> pandas.DataFrame`
 
-Read a forecast CSV or Parquet file for either scoring function. `reference_date` and `target_end_date` become pandas datetimes; `horizon`, `location`, and `output_type_id` become strings; `value` becomes numeric. Other forecast identifiers are also kept as strings. If present, `observation` and `observed` become numeric. Invalid dates or numeric values raise an error.
+Read a forecast CSV or Parquet file for either scoring function. `horizon`, `location`, and `output_type_id` become strings, preserving identifiers such as `01`. Other columns retain their inferred CSV types or stored Parquet types. Scoring validates and normalizes dates and numeric values later.
 
 ```python
 forecast_df = epibench.read_forecasts("/path/to/forecasts.csv")
