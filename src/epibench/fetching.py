@@ -22,6 +22,7 @@ from .library import _challenge_resource_directory, load_challenge
 logger = logging.getLogger(__name__)
 
 _AGGREGATED_GROUND_TRUTH = "gt.parquet"
+_REQUIRED_CHALLENGE_FILES = ("agent.md", "instruction.md", "task_list.csv")
 
 
 def fetch(challenge_id: str, output_path: Optional[str] = None) -> None:
@@ -73,14 +74,13 @@ def _fetch_to_directory(
     challenge_dir: Path,
 ) -> None:
     """Copy a bundled library challenge into an exact destination."""
-    definition = load_challenge(challenge_name)
     challenge_id = Path(challenge_name).stem
+    source_dir = _require_challenge_files(challenge_id)
+    definition = load_challenge(challenge_name)
     if challenge_dir.exists():
         raise click.ClickException(
             f"'{challenge_dir}' already exists; remove it or pick another --output-path."
         )
-
-    source_dir = _challenge_resource_directory(challenge_id)
 
     try:
         challenge_dir.mkdir(parents=True)
@@ -92,15 +92,27 @@ def _fetch_to_directory(
                 definition["complete_model_scores_file"],
             },
         )
-        _split_ground_truth(
-            source_dir.joinpath(_AGGREGATED_GROUND_TRUTH),
-            challenge_dir,
-        )
+        _split_ground_truth(definition, challenge_id, challenge_dir)
     except BaseException:
         shutil.rmtree(challenge_dir, ignore_errors=True)
         raise
 
     logger.info("Challenge '%s' returned to %s", challenge_id, challenge_dir)
+
+
+def _require_challenge_files(challenge_id: str) -> Traversable:
+    """Require the files that make a bundled challenge fetchable."""
+    source_dir = _challenge_resource_directory(challenge_id)
+    required_files = (f"{challenge_id}.json", *_REQUIRED_CHALLENGE_FILES)
+    missing_files = [
+        name for name in required_files if not source_dir.joinpath(name).is_file()
+    ]
+    if missing_files:
+        raise click.ClickException(
+            f"Library challenge '{challenge_id}' is missing required file(s): "
+            f"{', '.join(missing_files)}."
+        )
+    return source_dir
 
 
 def _copy_resource_tree(
@@ -127,34 +139,62 @@ def _copy_resource_tree(
 
 
 def _split_ground_truth(
-    aggregate_resource: Traversable,
+    definition: dict,
+    challenge_id: str,
     challenge_dir: Path,
 ) -> None:
-    """Expand one bundled ground-truth Parquet into its per-date fetch layout."""
-    task_list_path = _task_list_path(challenge_dir)
-    task_list = _read_task_list(task_list_path)
-    with aggregate_resource.open("rb") as aggregate_file:
-        ground_truth = pq.read_table(aggregate_file)
+    """Expand bundled ground truth using the challenge's required task list."""
+    task_list = _read_task_list(_task_list_path(challenge_dir))
+    reference_dates = definition["reference_dates"]
+    listed_dates = task_list["date"].tolist()
+    if len(listed_dates) != len(set(listed_dates)) or set(listed_dates) != set(reference_dates):
+        raise ValueError("Task list dates do not match challenge reference dates.")
+
+    task_sources: dict[str, pa.Table] = {}
+    for source_id in definition.get("sub_challenges") or [challenge_id]:
+        _require_challenge_files(source_id)
+        source_definition = load_challenge(source_id)
+        source_resource = _challenge_resource_directory(source_id).joinpath(
+            _AGGREGATED_GROUND_TRUTH
+        )
+        with source_resource.open("rb") as source_file:
+            source_gt = pq.read_table(source_file)
+        for reference_date in source_definition["reference_dates"]:
+            if reference_date in task_sources:
+                raise ValueError(f"Source challenges overlap on {reference_date}.")
+            task_sources[reference_date] = source_gt
+
+    if set(reference_dates) != set(task_sources):
+        raise ValueError("Challenge reference dates do not match ground-truth sources.")
 
     for task in task_list.itertuples(index=False):
         reference_date = str(task.date).strip()
-        reference_value = pa.scalar(
-            date.fromisoformat(reference_date),
-            type=pa.date32(),
+        _write_ground_truth_task(
+            task_sources[reference_date],
+            reference_date,
+            challenge_dir / str(task.path_to_gt).strip(),
         )
-        dated_ground_truth = ground_truth.filter(
-            pc.equal(ground_truth["reference_date"], reference_value)
-        ).drop(["reference_date"])
-        output_path = challenge_dir / str(task.path_to_gt).strip()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        pq.write_table(
-            dated_ground_truth,
-            output_path,
-            compression="brotli",
-            compression_level=5,
-            use_dictionary=["location", "target"],
-            write_statistics=True,
-        )
+
+
+def _write_ground_truth_task(
+    ground_truth: pa.Table, reference_date: str, output_path: Path
+) -> None:
+    """Write one reference date in the standard fetched task layout."""
+    reference_value = pa.scalar(date.fromisoformat(reference_date), type=pa.date32())
+    dated_ground_truth = ground_truth.filter(
+        pc.equal(ground_truth["reference_date"], reference_value)
+    ).drop(["reference_date"])
+    if dated_ground_truth.num_rows == 0:
+        raise ValueError(f"No ground truth found for {reference_date}.")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(
+        dated_ground_truth,
+        output_path,
+        compression="brotli",
+        compression_level=5,
+        use_dictionary=["location", "target"],
+        write_statistics=True,
+    )
 
 
 def _task_list_path(challenge_dir: Path) -> Path:
@@ -178,7 +218,6 @@ def _load_fetched_challenge(challenge_dir: Path, *, notes: str) -> Challenge:
         raise FileNotFoundError(
             f"Fetched challenge is missing its instructions: {instructions_path}."
         )
-
     return Challenge(
         instructions=instructions_path.read_text(encoding="utf-8"),
         tasks=_load_ground_truth_tasks(challenge_dir),

@@ -1,4 +1,4 @@
-# EpiBenchmark challenge: `epb_flu_inchosp_2024-2025_dev_7bbba0870b`
+# EpiBenchmark challenge: `epb_flu_inchosp_2024-2025_dev`
 
 This challenge is designed for [EpiBenchmark](https://accidda.github.io/EpiBenchmark/). Before preparing forecasts or scoring them, install the EpiBench command-line interface as described in the EpiBenchmark documentation.
 
@@ -10,7 +10,6 @@ The challenge is derived from the 2024–2025 [FluSight Forecast Hub](https://gi
 
 | Field | Value |
 | --- | --- |
-| Challenge ID | `epb_flu_inchosp_2024-2025_dev_7bbba0870b` |
 | Challenge name | `epb_flu_inchosp_2024-2025_dev` |
 | Source hub | [FluSight Forecast Hub](https://github.com/cdcepi/FluSight-forecast-hub), 2024–2025 season |
 | Pathogen | Influenza |
@@ -56,7 +55,7 @@ After producing the forecast CSV, run the following command from the repository 
 
 ```bash
 epibench score epb_flu_inchosp_2024-2025_dev \
-  --model-data-path "challenges/epb_flu_inchosp_2024-2025_dev_7bbba0870b/model-output/<model_name>.csv" \
+  --model-data-path "challenges/epb_flu_inchosp_2024-2025_dev/model-output/<model_name>.csv" \
   --model-name "<model_name>" \
   --output-path "results/epb_flu_inchosp_2024-2025_dev/<model_name>"
 ```

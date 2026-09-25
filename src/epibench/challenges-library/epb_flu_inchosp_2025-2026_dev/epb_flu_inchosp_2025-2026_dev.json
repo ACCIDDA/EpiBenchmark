@@ -12,6 +12,7 @@
     "scorecard_function": ["total wis", "50_coverage", "95_coverage"],
     "complete_models": ["CEPH-Rtrend_fluH", "CU-ensemble", "Cornell_JHU-hierarchSIR", "FluSight-HJudge_ensemble", "FluSight-baseline", "FluSight-ensemble", "FluSight-lop_norm", "FluSight-trained_mean", "FluSight-trained_med", "Gatech-ensemble_stat", "MIGHTE-Nsemble", "NAU-epymorph", "NAU-vulPES", "OHT_JHU-nbxd", "PSI-PROF", "PSI-PROF_MOA", "UGA_flucast-Copycat", "UMass-trends_ensemble", "UNC_IDD-InfluPaint"],
     "complete_model_scores_file": "flu25-26_complete-model-scores.parquet",
+    "sub_challenges": null,
     "date_created": "2026-07-07",
     "notes": "This challenge has continuous reference dates on a 1-week frequency from 2025-11-22 to 2024-05-30. There are 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded."
 }

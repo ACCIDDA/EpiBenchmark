@@ -1,4 +1,4 @@
-# EpiBenchmark challenge: `epb_rsv_inchosp_2025-2026_dev_dd567e3e80`
+# EpiBenchmark challenge: `epb_rsv_inchosp_2025-2026_dev`
 
 This challenge is designed for [EpiBenchmark](https://accidda.github.io/EpiBenchmark/). Before preparing forecasts or scoring them, install the EpiBench command-line interface as described in the EpiBenchmark documentation.
 
@@ -10,7 +10,6 @@ The challenge is derived from the 2025–2026 [RSV Forecast Hub](https://github.
 
 | Field | Value |
 | --- | --- |
-| Challenge ID | `epb_rsv_inchosp_2025-2026_dev_dd567e3e80` |
 | Challenge name | `epb_rsv_inchosp_2025-2026_dev` |
 | Source hub | [RSV Forecast Hub](https://github.com/cdcgov/rsv-forecast-hub), 2025–2026 season |
 | Pathogen | Respiratory syncytial virus (RSV) |
@@ -56,7 +55,7 @@ After producing the forecast CSV, run the following command from the repository 
 
 ```bash
 epibench score epb_rsv_inchosp_2025-2026_dev \
-  --model-data-path "challenges/epb_rsv_inchosp_2025-2026_dev_dd567e3e80/model-output/<model_name>.csv" \
+  --model-data-path "challenges/epb_rsv_inchosp_2025-2026_dev/model-output/<model_name>.csv" \
   --model-name "<model_name>" \
   --output-path "results/epb_rsv_inchosp_2025-2026_dev/<model_name>"
 ```
