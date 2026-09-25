@@ -54,7 +54,7 @@ Build ground-truth tasks from a hub and return them in memory. Using this functi
 | `vintaging_method` | `"as_of" \| "checkout" \| None` | Required when `vintaging=True`. |
 | `vintaging_offset` | `int \| None` | For each reference date, how many days before/after should ground truth retrieval be cut off. Pass `0` for no offset, `-3` for 3 days before the reference date, etc. |
 
-Dates must be readable into `YYYY-MM-DD` format, no later than the current date, and be valid reference dates for your hub and season. List dates are deduplicated and sorted. Call `Challenge.save()` to save the resulting ground truth data files to your machine.
+Dates must be readable into `YYYY-MM-DD` format, no later than the current date, and be valid reference dates for your hub and season. List dates are deduplicated and sorted. A create run must stay within one July 1–June 30 season. For known hubs, the bundled date library also restricts reference dates to the hub's recorded weekly submission window. Each task contains only ground truth with `target_end_date` from that season's July 1 through its reference date, inclusive. Call `Challenge.save()` to save the resulting ground truth data files to your machine.
 
 ```python
 challenge = epibench.create(
