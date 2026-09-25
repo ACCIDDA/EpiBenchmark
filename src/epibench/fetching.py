@@ -100,7 +100,7 @@ def _fetch_to_directory(
         shutil.rmtree(challenge_dir, ignore_errors=True)
         raise
 
-    logger.info("Challenge '%s' copied to %s", challenge_id, challenge_dir)
+    logger.info("Challenge '%s' returned to %s", challenge_id, challenge_dir)
 
 
 def _copy_resource_tree(
