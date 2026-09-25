@@ -25,6 +25,11 @@ _AGGREGATED_GROUND_TRUTH = "gt.parquet"
 _REQUIRED_CHALLENGE_FILES = ("agent.md", "instruction.md", "task_list.csv")
 
 
+def _public_challenge_files(challenge_id: str) -> tuple[str, ...]:
+    """Files copied to a fetched challenge besides its generated ground truth."""
+    return (f"{challenge_id}.json", *_REQUIRED_CHALLENGE_FILES)
+
+
 def fetch(challenge_id: str, output_path: Optional[str] = None) -> None:
     """
     Copy one bundled challenge into ``<output_path>/<challenge_id>/``.
@@ -84,14 +89,12 @@ def _fetch_to_directory(
 
     try:
         challenge_dir.mkdir(parents=True)
-        _copy_resource_tree(
-            source_dir,
-            challenge_dir,
-            excluded_names={
-                _AGGREGATED_GROUND_TRUTH,
-                definition["complete_model_scores_file"],
-            },
-        )
+        for filename in _public_challenge_files(challenge_id):
+            with (
+                source_dir.joinpath(filename).open("rb") as source_file,
+                (challenge_dir / filename).open("wb") as output_file,
+            ):
+                shutil.copyfileobj(source_file, output_file)
         _split_ground_truth(definition, challenge_id, challenge_dir)
     except BaseException:
         shutil.rmtree(challenge_dir, ignore_errors=True)
@@ -103,7 +106,7 @@ def _fetch_to_directory(
 def _require_challenge_files(challenge_id: str) -> Traversable:
     """Require the files that make a bundled challenge fetchable."""
     source_dir = _challenge_resource_directory(challenge_id)
-    required_files = (f"{challenge_id}.json", *_REQUIRED_CHALLENGE_FILES)
+    required_files = _public_challenge_files(challenge_id)
     missing_files = [
         name for name in required_files if not source_dir.joinpath(name).is_file()
     ]
@@ -113,29 +116,6 @@ def _require_challenge_files(challenge_id: str) -> Traversable:
             f"{', '.join(missing_files)}."
         )
     return source_dir
-
-
-def _copy_resource_tree(
-    source_dir: Traversable,
-    destination_dir: Path,
-    *,
-    excluded_names: set[str] | None = None,
-) -> None:
-    """Recursively copy a package-resource directory to the filesystem."""
-    excluded_names = excluded_names or set()
-    for resource in source_dir.iterdir():
-        if resource.name.startswith(".") or resource.name in excluded_names:
-            continue
-        destination = destination_dir / resource.name
-        if resource.is_dir():
-            destination.mkdir()
-            _copy_resource_tree(resource, destination)
-        elif resource.is_file():
-            with (
-                resource.open("rb") as source_file,
-                destination.open("wb") as output_file,
-            ):
-                shutil.copyfileobj(source_file, output_file)
 
 
 def _split_ground_truth(
