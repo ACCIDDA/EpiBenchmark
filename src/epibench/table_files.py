@@ -6,6 +6,7 @@ import pandas as pd
 
 
 TABLE_SUFFIXES = {".csv", ".parquet"}
+FORECAST_STRING_COLUMNS = ("horizon", "location", "output_type_id")
 
 
 def table_files(directory: Path) -> list[Path]:
@@ -16,14 +17,23 @@ def table_files(directory: Path) -> list[Path]:
     )
 
 
-def read_table(path: Path, *, string_columns: tuple[str, ...] = ()) -> pd.DataFrame:
-    """Read either format and preserve identifier columns as strings."""
+def read_forecasts(path: str | Path) -> pd.DataFrame:
+    """Read a forecast file, preserving horizon, location, and quantile IDs as strings.
+
+    Other columns retain the types inferred by pandas or stored in Parquet.
+    Date and numeric validation happens later in the scoring pipeline.
+    """
+    path = Path(path)
     if path.suffix.lower() == ".csv":
-        return pd.read_csv(path, dtype={column: str for column in string_columns})
-    if path.suffix.lower() == ".parquet":
+        data = pd.read_csv(
+            path, dtype={column: "string" for column in FORECAST_STRING_COLUMNS}
+        )
+    elif path.suffix.lower() == ".parquet":
         data = pd.read_parquet(path)
-        for column in string_columns:
-            if column in data:
-                data[column] = data[column].astype("string")
-        return data
-    raise ValueError(f"Expected a .csv or .parquet file: {path}")
+    else:
+        raise ValueError(f"Expected a .csv or .parquet file: {path}")
+
+    for column in FORECAST_STRING_COLUMNS:
+        if column in data:
+            data[column] = data[column].astype("string")
+    return data

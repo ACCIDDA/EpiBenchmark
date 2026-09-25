@@ -17,7 +17,7 @@ The configuration file for an `epibench create` run takes in the following keys:
     * this can be passes as a list of individually-specified dates, 
     * or as a dictionary with three keys: `start_date`, `end_date`, `freq`
         * `freq` format must be `"<n> weeks"` or `"<n> week"`
-    * **important: your dates must match the submission cadence of the hub you have provided for a given season.** If your `epibench create` run spans more than a season, the process will exit and ask that you limit to one season at a time.
+    * **important: your dates must match the submission cadence of the hub you have provided for a given season.** If your `epibench create` run spans more than a season, the process will exit and ask that you limit to one season at a time. The boundary between seasons is set at June 30 (end of season) and July 1 (start of new season).
 * `vintaging`: `TRUE` or `FALSE`. Set `TRUE` to prepare a distinct ground truth vintage for every reference date.
 * `vintaging_method`: when vintaging, choose `"as_of"` or `"checkout"`.
     * `"as_of"` reads the configured current file. It requires an `as_of` column and uses the latest revision at or before each cutoff date.
@@ -61,6 +61,7 @@ output_path/
 Where each requested date of reference has its own folder and file within the `gt/` directory, and the `task_list.csv` file give relative paths to ground truth data files for each date of reference.
 
 Each generated ground truth file uses exactly these standardized columns: `target_end_date`, `location`, `target`, and `observed`. The configured source date, location, and observed columns are renamed during output preparation.
+For each task, only observations with `target_end_date` from July 1 of its season through that task's reference date are returned. 
 
 ## example usage
 

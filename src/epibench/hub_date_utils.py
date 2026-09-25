@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from importlib import resources
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def create_season_start(reference_date: date) -> date:
+    """Return the July 1 start of the season containing a reference date."""
+    start_year = reference_date.year if reference_date.month >= 7 else reference_date.year - 1
+    return date(start_year, 7, 1)
 
 
 def _normalize_hub_name(hub_path: Path) -> str:
@@ -16,7 +22,7 @@ def _normalize_hub_name(hub_path: Path) -> str:
     return hub_path.name.strip().lower()
 
 
-def load_hub_date_library() -> dict[str, dict[str, dict[str, str]]]:
+def load_hub_date_library() -> dict[str, dict[str, dict[str, object]]]:
     """Load the bundled hub season date library."""
     hub_dates_resource = resources.files("epibench").joinpath(
         "hub-dates-library", "hub_dates.json"
@@ -28,8 +34,8 @@ def load_hub_date_library() -> dict[str, dict[str, dict[str, str]]]:
 def _parse_season_bounds(
     hub_name: str,
     season_name: str,
-    season_bounds: dict[str, str],
-) -> tuple[datetime.date, datetime.date]:
+    season_bounds: dict[str, object],
+) -> tuple[date, date]:
     """Parse a season's inclusive start/end dates from the bundled library."""
     try:
         season_start = datetime.strptime(season_bounds["start"], "%Y-%m-%d").date()
@@ -51,6 +57,36 @@ def _parse_season_bounds(
             "in hub_dates.json."
         )
     return season_start, season_end
+
+
+def _parse_reference_date_bounds(
+    hub_name: str,
+    season_name: str,
+    season_bounds: dict[str, object],
+    season_start: date,
+    season_end: date,
+) -> tuple[date, date]:
+    """Read the hub's actual weekly reference-date window within a July season."""
+    reference_dates = season_bounds.get("reference_dates")
+    if not isinstance(reference_dates, dict):
+        raise ValueError(
+            f"Season {season_name!r} for hub {hub_name!r} is missing "
+            "`reference_dates` in hub_dates.json."
+        )
+    try:
+        first = datetime.strptime(reference_dates["start"], "%Y-%m-%d").date()
+        last = datetime.strptime(reference_dates["end"], "%Y-%m-%d").date()
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(
+            f"Season {season_name!r} for hub {hub_name!r} has invalid "
+            "`reference_dates` in hub_dates.json."
+        ) from error
+    if not (season_start <= first <= last <= season_end):
+        raise ValueError(
+            f"Season {season_name!r} for hub {hub_name!r} has reference dates "
+            "outside its July 1–June 30 bounds in hub_dates.json."
+        )
+    return first, last
 
 
 def _derive_gt_cutoff_dates(
@@ -171,14 +207,25 @@ def validate_create_dates_against_hub_rounds(
     Validate create dates against bundled hub season boundaries.
 
     Rules:
-    - the hub must appear in the bundled date library, otherwise validation is skipped
-    - all requested dates must belong to exactly one listed season
-    - each requested date must be a 7-day multiple from that season's start date
+    - all requested dates must be within one July 1–June 30 season
+    - known hubs must have dates within that season's reference-date window
+    - each requested date must be a 7-day multiple from its first reference date
+    - for unknown hubs, only the July-season check is applied
 
     Returns:
     - validated create dates
     - gt cutoff dates derived from each create date plus ``gt_cutoff_offset``
     """
+    requested_date_objects = [
+        datetime.strptime(requested_date, "%Y-%m-%d").date()
+        for requested_date in requested_dates
+    ]
+    if len({create_season_start(requested_date) for requested_date in requested_date_objects}) > 1:
+        raise ValueError(
+            "Requested create dates span multiple July 1–June 30 seasons. "
+            "Please limit each create run to one season."
+        )
+
     _warn_on_vintaging_offset_mismatch(
         hub_path=hub_path,
         vintaging_cutoff=gt_cutoff_offset,
@@ -199,11 +246,6 @@ def validate_create_dates_against_hub_rounds(
         )
 
     season_matches: list[str] = []
-    requested_date_objects = [
-        datetime.strptime(requested_date, "%Y-%m-%d").date()
-        for requested_date in requested_dates
-    ]
-
     for season_name, season_bounds in hub_date_library[hub_name].items():
         season_start, season_end = _parse_season_bounds(
             hub_name=hub_name,
@@ -227,21 +269,40 @@ def validate_create_dates_against_hub_rounds(
         )
 
     matched_season_name = season_matches[0]
-    matched_season_start, _ = _parse_season_bounds(
+    matched_season_start, matched_season_end = _parse_season_bounds(
         hub_name=hub_name,
         season_name=matched_season_name,
         season_bounds=hub_date_library[hub_name][matched_season_name],
     )
 
+    first_reference_date, last_reference_date = _parse_reference_date_bounds(
+        hub_name=hub_name,
+        season_name=matched_season_name,
+        season_bounds=hub_date_library[hub_name][matched_season_name],
+        season_start=matched_season_start,
+        season_end=matched_season_end,
+    )
+    out_of_range_dates = [
+        requested_date.isoformat()
+        for requested_date in requested_date_objects
+        if not first_reference_date <= requested_date <= last_reference_date
+    ]
+    if out_of_range_dates:
+        raise ValueError(
+            f"Create dates outside the reference-date window "
+            f"{first_reference_date} through {last_reference_date} for hub "
+            f"{hub_name!r}, season {matched_season_name!r}: {out_of_range_dates}"
+        )
+
     invalid_dates = [
         requested_date.strftime("%Y-%m-%d")
         for requested_date in requested_date_objects
-        if (requested_date - matched_season_start).days % 7 != 0
+        if (requested_date - first_reference_date).days % 7 != 0
     ]
     if invalid_dates:
         raise ValueError(
-            "The following create dates are not weekly multiples of the season start "
-            f"date {matched_season_start} for hub {hub_name!r}, season {matched_season_name!r}: "
+            "The following create dates are not weekly multiples of the first reference "
+            f"date {first_reference_date} for hub {hub_name!r}, season {matched_season_name!r}: "
             f"{invalid_dates}"
         )
 
