@@ -9,7 +9,7 @@ from hubdata import connect_hub
 
 from .horizon_utils import normalize_horizon_strings, sort_horizon_strings
 from .scoring_summary import record_filtered_facets
-from .table_files import read_table
+from .table_files import read_forecasts
 
 REQUIRED_MODEL_DATA_COLUMNS = ['reference_date', 'target', 'horizon', 'target_end_date', 'location', 'output_type', 'output_type_id', 'value']
 MODEL_DATA_STRING_COLUMNS = {
@@ -383,7 +383,7 @@ def extract_model_data_details(
                     if column in df:
                         df[column] = df[column].astype("string")
             else:
-                df = read_table(data_source, string_columns=tuple(MODEL_DATA_STRING_COLUMNS))
+                df = read_forecasts(data_source)
             if df.empty:
                 if excluded_files is not None:
                     excluded_files.add(source_name)

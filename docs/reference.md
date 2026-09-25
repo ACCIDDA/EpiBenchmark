@@ -78,6 +78,14 @@ Be sure to use a ground-truth path and column names that match your hub. If usin
 
 Much like the command line scoring interface, there are two ways to score quantile model data with EpiBenchmark: against a library challenge (strict validation) or in user-defined parameters (non-strict validation). Both scoring functions return an in-memory `ScoreResult`. Forecast inputs must use the [Hubverse format](https://hubverse.io/); for more information on validation, visit the [scoring guide](commands/epibench-score.md). Call `ScoreResult.save()` to write files locally.
 
+### `read_forecasts(path: str | Path) -> pandas.DataFrame`
+
+Read a forecast CSV or Parquet file for either scoring function. `reference_date` and `target_end_date` become pandas datetimes; `horizon`, `location`, and `output_type_id` become strings; `value` becomes numeric. Other forecast identifiers are also kept as strings. If present, `observation` and `observed` become numeric. Invalid dates or numeric values raise an error.
+
+```python
+forecast_df = epibench.read_forecasts("/path/to/forecasts.csv")
+```
+
 ### `score(*, hub_path, evaluation_start_date, evaluation_end_date, target, models, baseline_model, include_models=None) -> ScoreResult`
 
 Run scoring with no relationship to a library challenge. Model data will not required to have the same forecast units (i.e., all data across all provided models will be scored together, regardless if all models forecast across the same locations, horizons, quantiles, etc.) All arguments except `include_models` are required keyword arguments.
@@ -92,9 +100,7 @@ Run scoring with no relationship to a library challenge. Model data will not req
 | `include_models` | `Sequence[str] \| None` | Names of other models from your hub you would like included in your scoring output. |
 
 ```python
-import pandas as pd
-
-forecast_df = pd.read_csv("/path/to/forecasts.csv", dtype={"location": str})
+forecast_df = epibench.read_forecasts("/path/to/forecasts.csv")
 result = epibench.score(
     hub_path="/path/to/hub",
     evaluation_start_date="2024-11-23",
@@ -115,9 +121,7 @@ Standard scoring sets `mode` to `"standard"` and `scorecard` to `None`.
 Run scoring for a model against a library challenge. `challenge_name` is a valid EpiBenchmark challenge name, `model_data` is an in-memory DataFrame of Hubverse forecast data, and `model_name` is the name that you would like to use to identify the submitted model. The challenge supplies the target, dates, required forecast facets, quantiles, and baseline. This route validates complete challenge coverage and computes a one-row scorecard. 
 
 ```python
-import pandas as pd
-
-forecast_df = pd.read_csv("/path/to/forecasts.csv", dtype={"location": str})
+forecast_df = epibench.read_forecasts("/path/to/forecasts.csv")
 result = epibench.score_challenge(
     "epb_flu_inchosp_2024-2025_dev",
     forecast_df,
