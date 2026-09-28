@@ -495,15 +495,16 @@ def _normalize_score_input(data: pd.DataFrame) -> pd.DataFrame:
         if column in payload.columns:
             payload[column] = payload[column].astype(str)
 
-    if "target_end_date" in payload:
-        try:
-            payload["target_end_date"] = pd.to_datetime(
-                payload["target_end_date"], errors="raise"
-            ).dt.strftime("%Y-%m-%d")
-        except (TypeError, ValueError) as error:
-            raise ForecastValidationError(
-                "`target_end_date` contains an invalid date."
-            ) from error
+    for column in ("reference_date", "target_end_date"):
+        if column in payload:
+            try:
+                payload[column] = pd.to_datetime(
+                    payload[column], format="mixed", errors="raise"
+                ).dt.strftime("%Y-%m-%d")
+            except (TypeError, ValueError) as error:
+                raise ForecastValidationError(
+                    f"`{column}` contains an invalid date."
+                ) from error
 
     for column in ("model", "location", "horizon"):
         if column in payload:

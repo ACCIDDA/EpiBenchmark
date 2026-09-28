@@ -6,6 +6,7 @@ from .challenge import Challenge, Task
 from .creating import create
 from .fetching import fetch_challenge
 from .library import list_challenges
+from .table_files import read_forecasts
 
 
 def __getattr__(name: str):
@@ -29,6 +30,7 @@ __all__ = [
     "list_challenges",
     "plot",
     "plot_challenge",
+    "read_forecasts",
     "score",
     "score_challenge",
 ]

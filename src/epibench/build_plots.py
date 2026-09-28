@@ -78,8 +78,12 @@ def validate_scores(score_df: pd.DataFrame) -> pd.DataFrame:
 
     score_df["model"] = score_df["model"].astype(str).str.strip()
     score_df["location"] = score_df["location"].astype(str).str.strip()
-    score_df["reference_date"] = pd.to_datetime(score_df["reference_date"], errors="raise")
-    score_df["target_end_date"] = pd.to_datetime(score_df["target_end_date"], errors="raise")
+    score_df["reference_date"] = pd.to_datetime(
+        score_df["reference_date"], format="mixed", errors="raise"
+    )
+    score_df["target_end_date"] = pd.to_datetime(
+        score_df["target_end_date"], format="mixed", errors="raise"
+    )
     score_df["horizon"] = pd.to_numeric(score_df["horizon"], errors="raise").astype(int)
 
     numeric_columns = [

@@ -12,6 +12,7 @@
     "scorecard_function": ["total wis", "50_coverage", "95_coverage"],
     "complete_models": ["RSVHub-ensemble"],
     "complete_model_scores_file": "rsv25-26_complete-model-scores.parquet",
+    "sub_challenges": null,
     "date_created": "2026-06-25",
     "notes": "This challenge has continuous reference dates on a 1-week frequency from 2025-11-22 to 2024-05-30. There are 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded."
 }

@@ -1,25 +1,25 @@
-# EpiBenchmark challenge: `epb_flu_inchosp_2023-2024_dev`
+# EpiBenchmark challenge: `epb_flu_inchosp_2025-2026_dev`
 
 This challenge is designed for [EpiBenchmark](https://accidda.github.io/EpiBenchmark/). Before preparing forecasts or scoring them, install the EpiBench command-line interface as described in the EpiBenchmark documentation.
 
 > **Development challenge — not finalized.** This is a `dev` release for testing. Its definition, ground truth, and scoring may change before a stable versioned release, and it is not yet a citable benchmark.
 
-The challenge is derived from the 2023–2024 [FluSight Forecast Hub](https://github.com/cdcepi/FluSight-forecast-hub). It evaluates forecasts of weekly incident influenza hospital admissions, using the target name `wk inc flu hosp`.
+The challenge is derived from the 2024–2026 [FluSight Forecast Hub](https://github.com/cdcepi/FluSight-forecast-hub) seasons. It evaluates forecasts of weekly incident influenza hospital admissions, using the target name `wk inc flu hosp`.
 
 ## Challenge details
 
 | Field | Value |
 | --- | --- |
-| Challenge name | `epb_flu_inchosp_2023-2024_dev` |
-| Source hub | [FluSight Forecast Hub](https://github.com/cdcepi/FluSight-forecast-hub), 2023–2024 season |
+| Challenge name | `epb_flu_inchosp_2024-2026_dev` |
+| Source hub | [FluSight Forecast Hub](https://github.com/cdcepi/FluSight-forecast-hub), 2024–2026 seasons |
 | Pathogen | Influenza |
 | Target | `wk inc flu hosp` |
 | Frequency | Weekly |
-| Reference-date span | 2023-10-14 to 2024-05-04 |
-| Forecast-date span | 2023-10-14 to 2024-05-25 |
-| Locations | 52 jurisdictions (50 states + Washington D.C. + U.S) |
+| Reference-date span | 2024-11-23 to 2026-05-30 |
+| Forecast-date span | 2024-11-23 to 2026-06-20 |
+| Locations | 52 jurisdictions, including `US` |
 | Horizons | 0, 1, 2, and 3 |
-| Required forecast tasks | 6,240 (30 reference dates × 52 locations × 4 horizons) |
+| Required forecast tasks | 11,440 (55 reference dates × 52 locations × 4 horizons) |
 | Provided ground truth | Vintaged (`as_of` each reference date); see `gt/` and `task_list.csv` |
 | Scoring truth | Final (latest-revised) values reported by the source hub |
 
@@ -42,7 +42,7 @@ Use `wk inc flu hosp` for `target`. Locations must use the two-digit FIPS codes 
 Each row should follow this pattern:
 
 ```text
-2023-10-14,wk inc flu hosp,0,2025-10-14,01,quantile,0.05,10
+2024-11-23,wk inc flu hosp,0,2024-11-23,01,quantile,0.05,10
 ```
 
 ## Model name and metadata
@@ -54,17 +54,17 @@ Use `--model-name` to identify the model in the score output. For reproducibilit
 After producing the forecast CSV, run the following command from the repository root. Replace `<model_name>` with your model name.
 
 ```bash
-epibench score epb_flu_inchosp_2023-2024_dev \
-  --model-data-path "challenges/epb_flu_inchosp_2023-2024_dev/model-output/<model_name>.csv" \
+epibench score epb_flu_inchosp_2024-2026_dev \
+  --model-data-path "challenges/epb_flu_inchosp_2024-2026_dev/model-output/<model_name>.csv" \
   --model-name "<model_name>" \
-  --output-path "results/epb_flu_inchosp_2023-2024_dev/<model_name>"
+  --output-path "results/epb_flu_inchosp_2024-2026_dev/<model_name>"
 ```
 
 Forecasts are scored with the Weighted Interval Score (WIS) together with 50% and 90% prediction-interval coverage, and are compared against the hub baseline model (`FluSight-baseline`).
 
 The command writes `EpiBenchmark_scores.csv`, `EpiBenchmark_scorecard.csv`, and `summary.md` to the output directory. It will not overwrite existing score files. It requires `Rscript`, the R package `scoringutils`, and network access to clone or update the source hub.
 
-**Report your scorecard.** The deliverable for this challenge is the `EpiBenchmark_scorecard.csv` produced by `epibench score epb_flu_inchosp_2023-2024_dev` — it is the official record of your model's performance and is what should be submitted or reported.
+**Report your scorecard.** The deliverable for this challenge is the `EpiBenchmark_scorecard.csv` produced by `epibench score epb_flu_inchosp_2024-2025_dev` — it is the official record of your model's performance and is what should be submitted or reported.
 
 ## Source documentation
 

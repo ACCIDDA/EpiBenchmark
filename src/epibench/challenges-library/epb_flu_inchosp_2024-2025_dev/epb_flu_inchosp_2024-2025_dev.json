@@ -12,6 +12,7 @@
     "scorecard_function": ["total wis", "50_coverage", "95_coverage"],
     "complete_models": ["CEPH-Rtrend_fluH", "CMU-TimeSeries", "FluSight-baseline", "FluSight-ensemble", "FluSight-lop_norm", "PSI-PROF", "UMass-trends_ensemble", "UVAFluX-Ensemble"],
     "complete_model_scores_file": "flu24-25_complete-model-scores.parquet",
+    "sub_challenges": null,
     "date_created": "2026-07-07",
     "notes": "With the exception of 1-week date discontinuity at 2025-01-25 (U.S. government shutdown), this challenge has continuous reference dates on a 1-week frequency from 2024-11-23 to 2025-05-31. There are 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded."
 }

@@ -9,6 +9,8 @@ from pathlib import Path
 import pandas as pd
 import pygit2
 
+from .hub_date_utils import create_season_start
+
 
 logger = logging.getLogger(__name__)
 hub_target_data_schema_module = importlib.import_module("hubdata.create_target_data_schema")
@@ -167,6 +169,16 @@ def _keep_output_columns(
     return standardized_df.loc[:, ["target_end_date", "location", "target", "observed"]]
 
 
+def _filter_to_reference_season(df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
+    """Keep fetched observations from July 1 through the task's reference date."""
+    reference_day = datetime.strptime(reference_date, "%Y-%m-%d").date()
+    target_end_dates = pd.to_datetime(df["target_end_date"], errors="coerce").dt.date
+    return df.loc[
+        (target_end_dates >= create_season_start(reference_day))
+        & (target_end_dates <= reference_day)
+    ].copy()
+
+
 def _checkout_gt_fetch(
     hub_path: Path,
     gt_file: str,
@@ -277,7 +289,7 @@ def gt_from_hub(
                     date_column=date_column,
                     date=cutoff_date,
                 )
-                gt_dict[str(reference_date)] = gt
+                gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
             elif vintaging_method == "as_of":
                 gt, _, target_column_found = _asof_gt_fetch(
                     hub_path=hub_path,
@@ -288,7 +300,7 @@ def gt_from_hub(
                     date_column=date_column,
                     date_s=cutoff_date,
                 )
-                gt_dict[str(reference_date)] = gt
+                gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
             else:
                 raise ValueError(f"Unsupported `vintaging_method`: {vintaging_method!r}.")
             target_column_presence.append(target_column_found)
@@ -302,7 +314,9 @@ def gt_from_hub(
             date_column=date_column,
             date_s=data_cutoff_dates,
         )
-        gt_dict[str(reference_dates[-1])] = gt
+        gt_dict[str(reference_dates[-1])] = _filter_to_reference_season(
+            gt, reference_dates[-1]
+        )
         target_column_presence.append(target_column_found)
 
     if len(set(target_column_presence)) > 1:

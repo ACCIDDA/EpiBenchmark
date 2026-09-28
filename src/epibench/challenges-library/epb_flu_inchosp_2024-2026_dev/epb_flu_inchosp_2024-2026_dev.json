@@ -1,0 +1,18 @@
+{
+    "hub": "flusight-forecast-hub",
+    "hub_path": "https://github.com/cdcepi/fluSight-forecast-hub",
+    "target": "wk inc flu hosp",
+    "ground_truth_file": "time-series.csv",
+    "vintaging_method": "checkout",
+    "baseline_model": "FluSight-baseline",
+    "reference_dates": ["2024-11-23", "2024-11-30", "2024-12-07", "2024-12-14", "2024-12-21", "2024-12-28", "2025-01-04", "2025-01-11", "2025-01-18", "2025-02-01", "2025-02-08", "2025-02-15", "2025-02-22", "2025-03-01", "2025-03-08", "2025-03-15", "2025-03-22", "2025-03-29", "2025-04-05", "2025-04-12", "2025-04-19", "2025-04-26", "2025-05-03", "2025-05-10", "2025-05-17", "2025-05-24", "2025-05-31", "2025-11-22", "2025-11-29", "2025-12-06", "2025-12-13", "2025-12-20", "2025-12-27", "2026-01-03", "2026-01-10", "2026-01-17", "2026-01-24", "2026-01-31", "2026-02-07", "2026-02-14", "2026-02-21", "2026-02-28", "2026-03-07", "2026-03-14", "2026-03-21", "2026-03-28", "2026-04-04", "2026-04-11", "2026-04-18", "2026-04-25", "2026-05-02", "2026-05-09", "2026-05-16", "2026-05-23", "2026-05-30"],
+    "horizons": ["0", "1", "2", "3"],
+    "quantiles": ["0.025", "0.25", "0.5", "0.75", "0.975"],
+    "locations": ["01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56", "US"],
+    "scorecard_function": ["total wis", "50_coverage", "95_coverage"],
+    "complete_models": ["FluSight-lop_norm", "FluSight-baseline", "UMass-trends_ensemble", "CEPH-Rtrend_fluH", "FluSight-ensemble", "PSI-PROF"],
+    "complete_model_scores_file": "flu24-26_complete-model-scores.parquet",
+    "sub_challenges": ["epb_flu_inchosp_2024-2025_dev", "epb_flu_inchosp_2025-2026_dev"],
+    "date_created": "2026-09-25",
+    "notes": "This challenge encompasses two seasons of flu forecasting (2024-2025 and 2025-2026; both running November through May). It has one in-season discontinuity at 2025-01-25 (U.S. government shutdown). There are 55 reference dates on a 1-week frequency, with a break in June-November of 2025. There are 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded."
+}

@@ -12,6 +12,7 @@
     "scorecard_function": ["total wis", "50_coverage", "95_coverage"],
     "complete_models": ["CEPH-Rtrend_fluH", "CU-ensemble", "FluSight-baseline", "FluSight-ensemble", "FluSight-lop_norm", "MIGHTE-Nsemble", "PSI-PROF", "fjordhest-ensemble"],
     "complete_model_scores_file": "flu23-24_complete-model-scores.parquet",
+    "sub_challenges": null,
     "date_created": "2026-07-07",
     "notes": "This challenge has continuous reference dates on a 1-week frequency from 2023-10-14 to 2024-05-04. There are 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded. Two locations ('25' and '27') are each missing two dates ('2024-05-18' and '2024-05-25') of ground truth data implicated in scoring; these location-date combinations will be omitted at the time of scoring."
 }
