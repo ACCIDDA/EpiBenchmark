@@ -5,6 +5,7 @@ from __future__ import annotations
 # logger enabled when tool is used via CLI
 # (we don't log when functions are imported)
 import logging
+from pathlib import Path
 
 import click
 
@@ -16,9 +17,29 @@ from . import __version__
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 @click.version_option(__version__, prog_name="epibench")
+@click.option(
+    "--profile",
+    "profile_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Write cProfile data for this command to a .prof file.",
+)
 @click.pass_context
-def cli(ctx: click.Context) -> None:
+def cli(ctx: click.Context, profile_path: Path | None) -> None:
     """Command-line interface for EpiBenchmark pipelines."""
+    if profile_path is not None and ctx.invoked_subcommand is not None:
+        import cProfile
+
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+        def save_profile() -> None:
+            profiler.disable()
+            profiler.dump_stats(str(profile_path))
+            click.echo(f"Profile saved to {profile_path}", err=True)
+
+        ctx.call_on_close(save_profile)
+
     if ctx.invoked_subcommand is None:
         click.echo("Choose a subcommand to run.\n")
         click.echo(ctx.get_help())
