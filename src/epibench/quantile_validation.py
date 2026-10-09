@@ -105,11 +105,11 @@ def validate_for_scoring_library_challenge_quantiles(
         extra_quantiles_found = set()
         files_with_extra_quantiles = set()
 
-        for _, group in normalized.groupby(FORECAST_UNIT_COLUMNS, sort=False):
-            group = group.sort_values(
+        normalized = normalized.sort_values(
                 by=["quantile_level_numeric", "quantile_level"],
                 kind="stable",
             )
+        for _, group in normalized.groupby(FORECAST_UNIT_COLUMNS, sort=False):
             forecast_unit_row = group.iloc[0]
             forecast_unit = ", ".join(
                 f"{column}={forecast_unit_row[column]}"
@@ -205,11 +205,11 @@ def validate_for_scoring_config_quantiles(model_dict: Dict[str, pd.DataFrame]) -
 
         # build forecast units (unique combinations of model, target_end_date, location, horizon)
         model_quantile_grid = None  # type: Optional[Tuple[str, ...]]
-        for _, group in normalized.groupby(FORECAST_UNIT_COLUMNS, sort=False):
-            group = group.sort_values(
+        normalized = normalized.sort_values(
                 by=["quantile_level_numeric", "quantile_level"],
                 kind="stable",
             )
+        for _, group in normalized.groupby(FORECAST_UNIT_COLUMNS, sort=False):
             forecast_unit_row = group.iloc[0]
             forecast_unit = ", ".join(
                 f"{column}={forecast_unit_row[column]}"

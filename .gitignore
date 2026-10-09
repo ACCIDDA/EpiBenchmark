@@ -7,6 +7,7 @@ wheels/
 *.egg-info
 .pytest_cache/
 .mypy_cache/
+*.prof
 .DS_Store
 
 # Virtual environments
@@ -22,4 +23,3 @@ hubs/
 josephs_influpaint_guidance_files/
 test-configs/
 site/
-
