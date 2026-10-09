@@ -35,7 +35,7 @@ Submit one CSV file with exactly these columns:
 reference_date,target,horizon,target_end_date,location,output_type,output_type_id,value
 ```
 
-Each row represents one quantile forecast. Use `quantile` for `output_type`, and set `output_type_id` to one of `0.05`, `0.25`, `0.5`, `0.75`, or `0.95`. Every reference-date/location/horizon combination must have all five quantiles. Values are non-negative admission counts, and quantile values must not decrease as the quantile level increases.
+Each row represents one quantile forecast. Use `quantile` for `output_type`, and set `output_type_id` to one of `0.025`, `0.25`, `0.5`, `0.75`, or `0.975`. Every reference-date/location/horizon combination must have all five quantiles. Values are non-negative admission counts, and quantile values must not decrease as the quantile level increases.
 
 Use `wk inc rsv hosp` for `target`. Locations must use the two-digit FIPS codes defined by the challenge, preserving leading zeroes, or `US` for the national forecast.
 
@@ -60,9 +60,9 @@ epibench score epb_rsv_inchosp_2025-2026_dev \
   --output-path "results/epb_rsv_inchosp_2025-2026_dev/<model_name>"
 ```
 
-Forecasts are scored with the Weighted Interval Score (WIS) together with 50% and 90% prediction-interval coverage, and are compared against the hub baseline model (`RSVHub-baseline`).
+Forecasts are scored with the Weighted Interval Score (WIS) together with 50% and 95% prediction-interval coverage, and are compared against the hub baseline model (`RSVHub-baseline`).
 
-The command writes `EpiBenchmark_scores.csv`, `EpiBenchmark_scorecard.csv`, and `summary.md` to the output directory. It will not overwrite existing score files. It requires `Rscript`, the R package `scoringutils`, and network access to clone or update the source hub.
+The command writes `EpiBenchmark_scores.csv`, `EpiBenchmark_scorecard.csv`, and `summary.md` to the output directory. It will not overwrite existing score files.
 
 **Report your scorecard.** The deliverable for this challenge is the `EpiBenchmark_scorecard.csv` produced by `epibench score epb_rsv_inchosp_2025-2026_dev` — it is the official record of your model's performance and is what should be submitted or reported.
 

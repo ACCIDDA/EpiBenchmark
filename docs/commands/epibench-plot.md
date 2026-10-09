@@ -29,6 +29,6 @@ epibench plot --score-file-path "./EpiBenchmark_scores.csv" --output-path "/User
 ```
 or
 ```bash
-epibench plot epb_flu_inchosp_2024-2025_dev --score-file-path "./EpiBenchmark_scores.csv" --output-path"
+epibench plot epb_flu_inchosp_2024-2025_dev --score-file-path "./EpiBenchmark_scores.csv" --output-path
 ```
 where `--score-file-path` is a path to a valid `EpiBenchmark_scores.csv` file.

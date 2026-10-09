@@ -11,7 +11,7 @@ Click a challenge to expand its full definition.
     | Target | `wk inc flu hosp` |
     | Reference dates | 2023-10-14 → 2024-05-04 (30 dates) |
     | Horizons | 0, 1, 2, 3 |
-    | Quantiles | 0.05, 0.25, 0.5, 0.75, 0.95 |
+    | Quantiles |0.025, 0.25, 0.5, 0.75, 0.975 |
     | Locations | 50 U.S. states + Washington D.C. + U.S. (52 total) |
     | Baseline model | `FluSight-baseline` |
     | Scorecard | total wis, 50_coverage, 95_coverage |
@@ -35,7 +35,7 @@ Click a challenge to expand its full definition.
     | Target | `wk inc flu hosp` |
     | Reference dates | 2024-11-23 → 2025-05-31 (27 dates) |
     | Horizons | 0, 1, 2, 3 |
-    | Quantiles | 0.05, 0.25, 0.5, 0.75, 0.95 |
+    | Quantiles |0.025, 0.25, 0.5, 0.75, 0.975 |
     | Locations | 50 U.S. states + Washington D.C. + U.S. (52 total) |
     | Baseline model | `FluSight-baseline` |
     | Scorecard | total wis, 50_coverage, 95_coverage |
@@ -63,7 +63,7 @@ Click a challenge to expand its full definition.
     | Target | `wk inc flu hosp` |
     | Reference dates | 2025-11-22 → 2026-05-30 (28 dates) |
     | Horizons | 0, 1, 2, 3 |
-    | Quantiles | 0.05, 0.25, 0.5, 0.75, 0.95 |
+    | Quantiles | 0.025, 0.25, 0.5, 0.75, 0.975 |
     | Locations | 50 U.S. states + Washington D.C. + U.S. (52 total) |
     | Baseline model | `FluSight-baseline` |
     | Scorecard | total wis, 50_coverage, 95_coverage |
@@ -75,7 +75,7 @@ Click a challenge to expand its full definition.
     | Target | `wk inc rsv hosp` |
     | Reference dates | 2025-11-22 → 2026-05-30 (28 dates) |
     | Horizons | 0, 1, 2, 3 |
-    | Quantiles | 0.05, 0.25, 0.5, 0.75, 0.95 |
+    | Quantiles |0.025, 0.25, 0.5, 0.75, 0.975 |
     | Locations | 50 U.S. states + Washington D.C. + U.S. (52 total) |
     | Baseline model | `RSVHub-baseline` |
     | Scorecard | total wis, 50_coverage, 95_coverage |
