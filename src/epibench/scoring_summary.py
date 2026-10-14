@@ -3,7 +3,9 @@
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-import pandas as pd
+import polars as pl
+
+from .dataframes import to_polars, normalize_dates, date_value
 
 from .forecast_facet_helpers import (
     facet_keys,
@@ -28,14 +30,13 @@ def record_filtered_facets(
 
 
 def build_config_missing_forecast_units_summary(
-    submitted_model_dict: Dict[str, pd.DataFrame],
+    submitted_model_dict: Dict[str, pl.DataFrame],
 ) -> Optional[Dict[str, object]]:
     """Compare submitted models and describe missing forecast units or quantiles."""
 
-    def _normalize_date_strings(date_series: pd.Series) -> pd.Series:
-        return pd.to_datetime(date_series, errors="raise").dt.strftime("%Y-%m-%d")
-
-    def _sort_unit(unit: Tuple[str, str, str, str]) -> Tuple[str, str, str, Tuple[int, object]]:
+    def _sort_unit(
+        unit: Tuple[str, str, str, str]
+    ) -> Tuple[str, str, str, Tuple[int, object]]:
         horizon = str(unit[3])
         horizon_sort = (0, int(horizon)) if horizon.isdigit() else (1, horizon)
         return (unit[0], unit[1], unit[2], horizon_sort)
@@ -53,22 +54,16 @@ def build_config_missing_forecast_units_summary(
     global_target_end_dates = set()
 
     for model_name, forecast_df in submitted_model_dict.items():
-        normalized = forecast_df.copy()
-        normalized["reference_date"] = _normalize_date_strings(normalized["reference_date"])
-        normalized["target_end_date"] = _normalize_date_strings(normalized["target_end_date"])
-        unit_rows = normalized[
+        normalized = normalize_dates(
+            to_polars(forecast_df), ["reference_date", "target_end_date"], strings=True
+        )
+        unit_rows = normalized.select(
             ["reference_date", "target_end_date", "location", "horizon"]
-        ].drop_duplicates()
-        unit_set = {
-            tuple(unit_row)
-            for unit_row in unit_rows.itertuples(index=False, name=None)
-        }
+        ).unique(maintain_order=True)
+        unit_set = {tuple(unit_row) for unit_row in unit_rows.iter_rows()}
         quantile_set = {
             round(float(quantile_level), 10)
-            for quantile_level in pd.to_numeric(
-                normalized["quantile_level"],
-                errors="raise",
-            )
+            for quantile_level in normalized["quantile_level"].cast(pl.Float64)
         }
         per_model_units[model_name] = unit_set
         per_model_quantiles[model_name] = quantile_set
@@ -81,7 +76,9 @@ def build_config_missing_forecast_units_summary(
 
     model_summaries = []
     for model_name in sorted(per_model_units):
-        missing_units = sorted(global_units - per_model_units[model_name], key=_sort_unit)
+        missing_units = sorted(
+            global_units - per_model_units[model_name], key=_sort_unit
+        )
         missing_quantiles = sorted(
             global_quantiles - per_model_quantiles[model_name],
             key=_sort_quantile_level,
@@ -101,8 +98,7 @@ def build_config_missing_forecast_units_summary(
                     for missing_unit in missing_units
                 ],
                 "missing_quantiles": [
-                    f"{missing_quantile:g}"
-                    for missing_quantile in missing_quantiles
+                    f"{missing_quantile:g}" for missing_quantile in missing_quantiles
                 ],
             }
         )
@@ -113,8 +109,12 @@ def build_config_missing_forecast_units_summary(
     return {
         "locations": sorted(str(location) for location in global_locations),
         "horizons": sort_horizon_strings({str(horizon) for horizon in global_horizons}),
-        "reference_dates": sorted(str(reference_date) for reference_date in global_reference_dates),
-        "target_end_dates": sorted(str(target_end_date) for target_end_date in global_target_end_dates),
+        "reference_dates": sorted(
+            str(reference_date) for reference_date in global_reference_dates
+        ),
+        "target_end_dates": sorted(
+            str(target_end_date) for target_end_date in global_target_end_dates
+        ),
         "quantiles": [
             f"{quantile_level:g}"
             for quantile_level in sorted(global_quantiles, key=_sort_quantile_level)
@@ -124,13 +124,10 @@ def build_config_missing_forecast_units_summary(
 
 
 def build_extra_model_facet_coverage_summary(
-    submitted_model_dict: Dict[str, pd.DataFrame],
-    extra_model_dict: Dict[str, pd.DataFrame],
+    submitted_model_dict: Dict[str, pl.DataFrame],
+    extra_model_dict: Dict[str, pl.DataFrame],
 ) -> Optional[Dict[str, object]]:
     """Describe hub models missing facets present in any submitted model."""
-
-    def _normalize_date_strings(date_series: pd.Series) -> pd.Series:
-        return pd.to_datetime(date_series, errors="raise").dt.strftime("%Y-%m-%d")
 
     def _sort_unit(
         unit: Tuple[str, ...],
@@ -142,21 +139,19 @@ def build_extra_model_facet_coverage_summary(
     def _sort_quantile_level(quantile_level: str) -> float:
         return float(quantile_level)
 
-    submitted_global_facets = submitted_facet_union(
-        submitted_model_dict
-    )
+    submitted_global_facets = submitted_facet_union(submitted_model_dict)
     submitted_locations = set()
     submitted_horizons = set()
     submitted_reference_dates = set()
     submitted_target_end_dates = set()
 
     for forecast_df in submitted_model_dict.values():
-        normalized = forecast_df.copy()
-        normalized["reference_date"] = _normalize_date_strings(normalized["reference_date"])
-        normalized["target_end_date"] = _normalize_date_strings(normalized["target_end_date"])
-        unit_rows = normalized[
+        normalized = normalize_dates(
+            to_polars(forecast_df), ["reference_date", "target_end_date"], strings=True
+        )
+        unit_rows = normalized.select(
             ["reference_date", "target_end_date", "location", "horizon"]
-        ].drop_duplicates()
+        ).unique(maintain_order=True)
         submitted_locations.update(unit_rows["location"])
         submitted_horizons.update(unit_rows["horizon"])
         submitted_reference_dates.update(unit_rows["reference_date"])
@@ -207,9 +202,15 @@ def build_extra_model_facet_coverage_summary(
 
     return {
         "locations": sorted(str(location) for location in submitted_locations),
-        "horizons": sort_horizon_strings({str(horizon) for horizon in submitted_horizons}),
-        "reference_dates": sorted(str(reference_date) for reference_date in submitted_reference_dates),
-        "target_end_dates": sorted(str(target_end_date) for target_end_date in submitted_target_end_dates),
+        "horizons": sort_horizon_strings(
+            {str(horizon) for horizon in submitted_horizons}
+        ),
+        "reference_dates": sorted(
+            str(reference_date) for reference_date in submitted_reference_dates
+        ),
+        "target_end_dates": sorted(
+            str(target_end_date) for target_end_date in submitted_target_end_dates
+        ),
         "models": model_summaries,
     }
 
@@ -370,7 +371,7 @@ def format_extra_model_facet_paring_summary(
     return "\n".join(lines)
 
 
-def format_missing_ground_truth_units_summary(scoring_data: pd.DataFrame) -> str:
+def format_missing_ground_truth_units_summary(scoring_data: pl.DataFrame) -> str:
     """Describe forecast units omitted because their observed value is missing."""
     forecast_unit_columns = [
         "model",
@@ -379,26 +380,28 @@ def format_missing_ground_truth_units_summary(scoring_data: pd.DataFrame) -> str
         "location",
         "horizon",
     ]
-    missing_observed_units = scoring_data.loc[
-        scoring_data["observed"].isna(),
-        forecast_unit_columns,
-    ].drop_duplicates()
+    missing_observed_units = (
+        to_polars(scoring_data)
+        .filter(pl.col("observed").is_null())
+        .select(forecast_unit_columns)
+        .unique(maintain_order=True)
+    )
 
     lines = [
         "## Forecast units omitted because ground truth was unavailable",
         "",
     ]
-    if missing_observed_units.empty:
+    if missing_observed_units.is_empty():
         lines.append("None")
         return "\n".join(lines)
 
     records = []
-    for unit in missing_observed_units.itertuples(index=False, name=None):
+    for unit in missing_observed_units.iter_rows():
         records.append(
             {
                 "model": str(unit[0]),
-                "reference_date": pd.Timestamp(unit[1]).strftime("%Y-%m-%d"),
-                "target_end_date": pd.Timestamp(unit[2]).strftime("%Y-%m-%d"),
+                "reference_date": date_value(unit[1]).strftime("%Y-%m-%d"),
+                "target_end_date": date_value(unit[2]).strftime("%Y-%m-%d"),
                 "location": str(unit[3]),
                 "horizon": str(unit[4]),
             }
@@ -407,9 +410,7 @@ def format_missing_ground_truth_units_summary(scoring_data: pd.DataFrame) -> str
     def _sort_key(unit: Dict[str, str]) -> Tuple[object, ...]:
         horizon = unit["horizon"]
         horizon_sort = (
-            (0, int(horizon))
-            if horizon.lstrip("-").isdigit()
-            else (1, horizon)
+            (0, int(horizon)) if horizon.lstrip("-").isdigit() else (1, horizon)
         )
         return (
             unit["model"],
@@ -454,7 +455,9 @@ def format_excluded_files_summary(
         """Render date-like values as YYYY-MM-DD strings."""
         return ", ".join(str(date_value).split(" ")[0] for date_value in date_values)
 
-    excluded_file_list = sorted({str(excluded_file) for excluded_file in excluded_files})
+    excluded_file_list = sorted(
+        {str(excluded_file) for excluded_file in excluded_files}
+    )
     lines = []
 
     if missing_forecast_units_warning:
@@ -556,7 +559,8 @@ def write_excluded_files_summary(
             locations=locations,
             missing_forecast_units_warning=missing_forecast_units_warning,
             missing_ground_truth_units_summary=missing_ground_truth_units_summary,
-        ) + "\n",
+        )
+        + "\n",
         encoding="utf-8",
     )
     return output_path

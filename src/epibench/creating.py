@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-import pandas as pd
+import polars as pl
 
 from .challenge import Challenge, Task, _save_tasks
 from .config import Config, CreateParameters, build_create_parameters
@@ -72,7 +72,7 @@ def _create_challenge(parameters: CreateParameters) -> Challenge:
 
     tasks: list[Task] = []
     for reference_date, ground_truth in ground_truth_by_date.items():
-        if isinstance(ground_truth, pd.DataFrame):
+        if isinstance(ground_truth, pl.DataFrame):
             tasks.append(Task(name=reference_date, gt_df=ground_truth))
         else:
             logger.warning(

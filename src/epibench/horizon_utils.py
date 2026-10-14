@@ -37,10 +37,27 @@ def sort_horizon_strings(horizons: Union[Set[str], List[str]]) -> List[str]:
     return sorted(
         {normalize_horizon_string(horizon) for horizon in horizons},
         key=lambda horizon: (
-            0,
-            int(horizon),
-        ) if str(horizon).isdigit() else (
-            1,
-            str(horizon),
+            (
+                0,
+                int(horizon),
+            )
+            if str(horizon).isdigit()
+            else (
+                1,
+                str(horizon),
+            )
         ),
+    )
+
+
+def normalize_horizon_column(frame, column: str = "horizon"):
+    """Normalize distinct horizon strings once and map them to the column."""
+    import polars as pl
+
+    values = frame[column].cast(pl.String)
+    mapping = {
+        value: normalize_horizon_string(value) for value in values.drop_nulls().unique()
+    }
+    return frame.with_columns(
+        values.replace_strict(mapping, default=None).alias(column)
     )

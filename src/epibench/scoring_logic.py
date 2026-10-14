@@ -11,9 +11,12 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
-import pandas as pd
+import polars as pl
+
+from .dataframes import to_polars, normalize_dates
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +65,10 @@ class ScoringError(Exception):
     """A fatal error raised while EpiBench is scoring forecast data."""
 
 
-def _check_columns(data: pd.DataFrame) -> None:
-    if not isinstance(data, pd.DataFrame):
-        raise ForecastValidationError("Forecast data must be a pandas DataFrame.")
-    if data.empty:
+def _check_columns(data: pl.DataFrame) -> None:
+    if not isinstance(data, pl.DataFrame):
+        raise ForecastValidationError("Forecast data must be a compatible DataFrame.")
+    if data.is_empty():
         raise ForecastValidationError("Forecast data must contain at least one row.")
     if "sample_id" in data.columns and "quantile_level" in data.columns:
         raise ForecastValidationError(
@@ -82,33 +85,27 @@ def _check_columns(data: pd.DataFrame) -> None:
         )
 
 
-def _prepare_forecasts(data: pd.DataFrame) -> pd.DataFrame:
+def _prepare_forecasts(data: pl.DataFrame) -> pl.DataFrame:
     """Match as_forecast_quantile(), set_forecast_unit(), and clean_forecast()."""
     _check_columns(data)
     columns = [*REQUIRED_COLUMNS, *FORECAST_UNIT_COLUMNS]
-    forecast = data.loc[:, columns].copy()
-    # clean_forecast(na.omit = TRUE) considers every input column, including
-    # extra metadata columns that are not used by the metrics. 
-    # rows with NAs are ommitted from scoring!
-    missing_rows = data.isna().any(axis=1).to_numpy()
-
+    forecast = data.select(columns)
+    missing_rows = (
+        data.select(pl.any_horizontal(pl.all().is_null())).to_series().to_numpy()
+    )
     for column in REQUIRED_COLUMNS:
-        if pd.api.types.is_bool_dtype(forecast[column]):
+        if forecast.schema[column] == pl.Boolean:
             raise ForecastValidationError(
                 f"Forecast column '{column}' must be numeric."
             )
         try:
-            forecast[column] = pd.to_numeric(forecast[column], errors="raise")
-        except (TypeError, ValueError) as error:
+            forecast = forecast.with_columns(pl.col(column).cast(pl.Float64))
+        except (pl.exceptions.PolarsError, TypeError, ValueError) as error:
             raise ForecastValidationError(
                 f"Forecast column '{column}' must be numeric."
             ) from error
-        if pd.api.types.is_bool_dtype(forecast[column]):
-            raise ForecastValidationError(
-                f"Forecast column '{column}' must be numeric."
-            )
 
-    quantiles = forecast["quantile_level"].to_numpy(dtype=np.float64, copy=False)
+    quantiles = forecast["quantile_level"].to_numpy()
     finite_quantiles = quantiles[~np.isnan(quantiles)]
     if np.any((finite_quantiles < 0) | (finite_quantiles > 1)):
         raise ForecastValidationError(
@@ -124,10 +121,10 @@ def _prepare_forecasts(data: pd.DataFrame) -> pd.DataFrame:
             MetricScoringWarning,
             stacklevel=3,
         )
-        forecast["quantile_level"] = forecast["quantile_level"].round(9)
+        forecast = forecast.with_columns(pl.col("quantile_level").round(9))
 
     duplicate_key = [*FORECAST_UNIT_COLUMNS, "quantile_level"]
-    duplicated = forecast.duplicated(duplicate_key, keep=False)
+    duplicated = forecast.select(duplicate_key).is_duplicated()
     if duplicated.any():
         raise ForecastValidationError(
             "Each forecast unit must contain at most one prediction for each "
@@ -135,8 +132,8 @@ def _prepare_forecasts(data: pd.DataFrame) -> pd.DataFrame:
         )
 
     had_missing_rows = bool(missing_rows.any())
-    forecast = forecast.loc[~missing_rows]
-    if forecast.empty:
+    forecast = forecast.filter(pl.Series(~missing_rows))
+    if forecast.is_empty():
         raise ForecastValidationError(
             "No scoreable forecasts remain after rows with missing values "
             "were removed."
@@ -150,8 +147,8 @@ def _prepare_forecasts(data: pd.DataFrame) -> pd.DataFrame:
     return forecast
 
 
-def _grid_key(values: pd.Series) -> tuple[float, ...]:
-    return tuple(np.sort(values.to_numpy(dtype=np.float64, copy=False)))
+def _grid_key(values: pl.Series) -> tuple[float, ...]:
+    return tuple(np.sort(values.to_numpy()))
 
 
 def _symmetric_pairs(
@@ -215,9 +212,7 @@ def _wis_components(
         median = predicted[:, quantiles == 0.5][:, 0]
         median_overprediction = np.where(observed < median, median - observed, 0.0)
         median_underprediction = np.where(observed > median, observed - median, 0.0)
-        dispersion_parts = np.column_stack(
-            (np.zeros(observed.size), dispersion_parts)
-        )
+        dispersion_parts = np.column_stack((np.zeros(observed.size), dispersion_parts))
         overprediction_parts = np.column_stack(
             (0.5 * median_overprediction, overprediction_parts)
         )
@@ -310,18 +305,13 @@ def _warn_metric_failure(metric_name: str, message: str) -> None:
     )
 
 
-def _wis_failure_message(
-    predicted: np.ndarray, quantiles: np.ndarray
-) -> str:
+def _wis_failure_message(predicted: np.ndarray, quantiles: np.ndarray) -> str:
     if _symmetric_pairs(quantiles) is None:
         return (
             "the quantile levels do not provide matching lower and upper "
             "bounds for every interval"
         )
-    if np.any(
-        predicted[:, quantiles > 0.5]
-        < predicted[:, quantiles < 0.5][:, ::-1]
-    ):
+    if np.any(predicted[:, quantiles > 0.5] < predicted[:, quantiles < 0.5][:, ::-1]):
         return (
             "at least one prediction interval has a lower bound greater "
             "than its upper bound"
@@ -329,9 +319,7 @@ def _wis_failure_message(
     return "no valid forecast intervals were available"
 
 
-def _bias_failure_message(
-    predicted: np.ndarray, quantiles: np.ndarray
-) -> str:
+def _bias_failure_message(predicted: np.ndarray, quantiles: np.ndarray) -> str:
     if not np.any(quantiles <= 0.5):
         return "at least one quantile at or below 0.5 is required"
     if not np.any(quantiles >= 0.5):
@@ -342,17 +330,17 @@ def _bias_failure_message(
 
 
 def _score_arrays(
-    units: pd.DataFrame,
+    units: pl.DataFrame,
     observed: np.ndarray,
     predicted: np.ndarray,
     quantiles: Sequence[float],
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     quantile_array = np.asarray(quantiles, dtype=np.float64)
-    result = units.reset_index(drop=True).copy()
+    result = units.clone()
     components = _wis_components(observed, predicted, quantile_array)
     if components is not None:
         for name, values in components.items():
-            result[name] = values
+            result = result.with_columns(pl.Series(name, values))
     else:
         message = _wis_failure_message(predicted, quantile_array)
         for name in ("wis", "overprediction", "underprediction", "dispersion"):
@@ -360,16 +348,16 @@ def _score_arrays(
 
     bias = _bias(observed, predicted, quantile_array)
     if bias is not None:
-        result["bias"] = bias
+        result = result.with_columns(pl.Series("bias", bias))
     else:
-        _warn_metric_failure(
-            "bias", _bias_failure_message(predicted, quantile_array)
-        )
+        _warn_metric_failure("bias", _bias_failure_message(predicted, quantile_array))
 
     for interval_range in (50, 95):
         coverage = _coverage(observed, predicted, quantile_array, interval_range)
         if coverage is not None:
-            result[f"interval_coverage_{interval_range}"] = coverage
+            result = result.with_columns(
+                pl.Series(f"interval_coverage_{interval_range}", coverage)
+            )
         else:
             lower_q = (100 - interval_range) / 200
             upper_q = 1 - lower_q
@@ -381,7 +369,9 @@ def _score_arrays(
 
     median_indexes = np.flatnonzero(quantile_array == 0.5)
     if median_indexes.size == 1:
-        result["ae_median"] = np.abs(observed - predicted[:, median_indexes[0]])
+        result = result.with_columns(
+            pl.Series("ae_median", np.abs(observed - predicted[:, median_indexes[0]]))
+        )
     else:
         _warn_metric_failure(
             "ae_median", "absolute median error requires the 0.5 quantile"
@@ -389,38 +379,38 @@ def _score_arrays(
     return result
 
 
-def _score_grid(group: pd.DataFrame, quantiles: Sequence[float]) -> pd.DataFrame:
+def _score_grid(group: pl.DataFrame, quantiles: Sequence[float]) -> pl.DataFrame:
     """Score a batch sharing one grid (fallback for heterogeneous input)."""
     unit_rows: list[dict[str, object]] = []
     prediction_rows: list[np.ndarray] = []
     observed_values: list[float] = []
-    grouped = group.groupby(FORECAST_UNIT_COLUMNS, sort=False, observed=True)
+    grouped = group.group_by(FORECAST_UNIT_COLUMNS, maintain_order=True)
     for unit_key, unit_group in grouped:
-        ordered = unit_group.sort_values("quantile_level", kind="stable")
-        predictions = ordered["predicted"].to_numpy(dtype=np.float64)
+        ordered = unit_group.sort("quantile_level", maintain_order=True)
+        predictions = ordered["predicted"].to_numpy()
         if not isinstance(unit_key, tuple):
             unit_key = (unit_key,)
         unit = dict(zip(FORECAST_UNIT_COLUMNS, unit_key, strict=True))
 
-        for observed in pd.unique(unit_group["observed"]):
+        for observed in unit_group["observed"].unique(maintain_order=True):
             unit_rows.append(unit)
             prediction_rows.append(predictions)
             observed_values.append(float(observed))
 
-    units = pd.DataFrame(unit_rows, columns=FORECAST_UNIT_COLUMNS)
+    units = pl.DataFrame(unit_rows).select(FORECAST_UNIT_COLUMNS)
     predicted = np.vstack(prediction_rows)
     observed = np.asarray(observed_values, dtype=np.float64)
     return _score_arrays(units, observed, predicted, quantiles)
 
 
 def _score_uniform_grid(
-    forecast: pd.DataFrame,
+    forecast: pl.DataFrame,
     unit_codes: np.ndarray,
     group_size: int,
-) -> pd.DataFrame | None:
+) -> pl.DataFrame | None:
     """Vectorized fast path when every forecast unit uses the same grid."""
     unit_count = int(unit_codes.max()) + 1
-    quantile_values = forecast["quantile_level"].to_numpy(dtype=np.float64, copy=False)
+    quantile_values = forecast["quantile_level"].to_numpy()
     row_order = np.lexsort((quantile_values, unit_codes))
     quantile_matrix = quantile_values[row_order].reshape(unit_count, group_size)
     if not np.all(quantile_matrix == quantile_matrix[0]):
@@ -428,18 +418,18 @@ def _score_uniform_grid(
 
     first_rows = np.full(unit_count, len(forecast), dtype=np.intp)
     np.minimum.at(first_rows, unit_codes, np.arange(len(forecast)))
-    all_observed = forecast["observed"].to_numpy(dtype=np.float64, copy=False)
+    all_observed = forecast["observed"].to_numpy()
     if not np.all(all_observed == all_observed[first_rows][unit_codes]):
         return None
-    units = forecast.iloc[first_rows][FORECAST_UNIT_COLUMNS]
+    units = forecast[first_rows].select(FORECAST_UNIT_COLUMNS)
     observed = all_observed[first_rows]
-    predicted = forecast["predicted"].to_numpy(dtype=np.float64, copy=False)[
-        row_order
-    ].reshape(unit_count, group_size)
+    predicted = (
+        forecast["predicted"].to_numpy()[row_order].reshape(unit_count, group_size)
+    )
     return _score_arrays(units, observed, predicted, quantile_matrix[0])
 
 
-def _score_quantile_forecasts(data: pd.DataFrame) -> pd.DataFrame:
+def _score_quantile_forecasts(data: pl.DataFrame) -> pl.DataFrame:
     """Return the same unsummarized scores as EpiBench's scoringutils call.
 
     The implementation batches forecast units that share a quantile grid and
@@ -447,10 +437,20 @@ def _score_quantile_forecasts(data: pd.DataFrame) -> pd.DataFrame:
     overhead.
     """
     forecast = _prepare_forecasts(data)
-    unit_index = pd.MultiIndex.from_frame(forecast[FORECAST_UNIT_COLUMNS])
-    unit_codes, _ = pd.factorize(unit_index, sort=False)
+    unit_codes = (
+        forecast.select(
+            pl.struct(FORECAST_UNIT_COLUMNS).rank("dense").cast(pl.Int64) - 1
+        )
+        .to_series()
+        .to_numpy()
+    )
+    # Assign codes in forecast-unit order of first appearance.
+    _, first, inverse = np.unique(unit_codes, return_index=True, return_inverse=True)
+    rank = np.empty(len(first), dtype=np.int64)
+    rank[np.argsort(first)] = np.arange(len(first))
+    unit_codes = rank[inverse]
     counts = np.bincount(unit_codes)
-    unique_counts = pd.unique(counts)
+    unique_counts = np.array(list(dict.fromkeys(counts)))
     if unique_counts.size > 1:
         count_text = ", ".join(str(value) for value in unique_counts)
         warnings.warn(
@@ -468,83 +468,87 @@ def _score_quantile_forecasts(data: pd.DataFrame) -> pd.DataFrame:
 
     # scoring logic does not do quantile validation outside of: non-numeric, outside of [0,1], duplicated within forecast unit
     # scoring logic expects valid quantiles at this point, otherwise invalid quantiles (e.g., asymmetric) will pass through silently
-    unit_groups = forecast.groupby(FORECAST_UNIT_COLUMNS, sort=False, observed=True)
-    grid_keys = np.empty(len(forecast), dtype=object)
-    for row_indexes in unit_groups.indices.values():
-        key = _grid_key(forecast.iloc[row_indexes]["quantile_level"])
-        grid_keys[row_indexes] = [key] * len(row_indexes)
-    forecast["_scoringutils_grid"] = grid_keys
-
-    scored = []
-    for quantile_grid, group in forecast.groupby(
-        "_scoringutils_grid", sort=True, observed=True
-    ):
-        scored.append(_score_grid(group, quantile_grid))
-
-    output = pd.concat(scored, ignore_index=True, sort=False)
-    return output
+    grids = {}
+    for _, group in forecast.group_by(FORECAST_UNIT_COLUMNS, maintain_order=True):
+        key = _grid_key(group["quantile_level"])
+        grids.setdefault(key, []).append(group)
+    return pl.concat(
+        [_score_grid(pl.concat(grids[key]), key) for key in sorted(grids)],
+        how="diagonal_relaxed",
+    )
 
 
-def _normalize_score_input(data: pd.DataFrame) -> pd.DataFrame:
-    """Normalize input types previously produced by the CSV round trip."""
-    if not isinstance(data, pd.DataFrame):
-        raise ForecastValidationError("Forecast data must be a pandas DataFrame.")
-
-    payload = data.copy()
-    for column in FORECAST_UNIT_COLUMNS:
-        if column in payload.columns:
-            payload[column] = payload[column].astype(str)
-
+def _normalize_score_input(data: Any) -> pl.DataFrame:
+    """Normalize public dataframe inputs to scoring types."""
+    try:
+        payload = to_polars(data)
+    except (TypeError, ValueError) as error:
+        raise ForecastValidationError(str(error)) from error
+    payload = payload.with_columns(
+        [
+            pl.col(c).cast(pl.String)
+            for c in FORECAST_UNIT_COLUMNS
+            if c in payload.columns
+        ]
+    )
     for column in ("reference_date", "target_end_date"):
-        if column in payload:
+        if column in payload.columns:
             try:
-                payload[column] = pd.to_datetime(
-                    payload[column], format="mixed", errors="raise"
-                ).dt.strftime("%Y-%m-%d")
-            except (TypeError, ValueError) as error:
-                raise ForecastValidationError(
-                    f"`{column}` contains an invalid date."
-                ) from error
-
+                payload = normalize_dates(payload, [column], strings=True)
+            except ValueError as error:
+                raise ForecastValidationError(str(error)) from error
     for column in ("model", "location", "horizon"):
-        if column in payload:
-            numeric = pd.to_numeric(payload[column], errors="coerce")
-            if numeric.notna().all():
-                payload[column] = numeric
+        if column in payload.columns:
+            values = payload[column]
+            numeric = values.cast(pl.Float64, strict=False).fill_nan(None)
+            if numeric.is_not_null().all():
+                # Integer syntax retains precision; decimal syntax stays floating.
+                signed = values.cast(pl.Int64, strict=False)
+                unsigned = values.cast(pl.UInt64, strict=False)
+                inferred = (
+                    signed
+                    if signed.is_not_null().all()
+                    else unsigned if unsigned.is_not_null().all() else numeric
+                )
+                payload = payload.with_columns(inferred.alias(column))
     return payload
 
 
-def _add_relative_wis(
-    scores: pd.DataFrame, baseline_model: str
-) -> pd.DataFrame:
+def _add_relative_wis(scores: pl.DataFrame, baseline_model: str) -> pl.DataFrame:
     """Add WIS relative to the configured baseline model."""
-    baseline_scores = scores[scores["model"] == baseline_model]
-    if baseline_scores.empty or "wis" not in scores:
-        scores["rwis"] = pd.NA
-        return scores
-
-    join_columns = [
-        "reference_date",
-        "target_end_date",
-        "location",
-        "horizon",
-    ]
-    baseline_wis = baseline_scores[join_columns + ["wis"]].rename(
-        columns={"wis": "baseline_wis"}
+    # Baseline names match string model identifiers.
+    baseline_scores = (
+        scores.filter(pl.col("model") == baseline_model)
+        if scores.schema["model"] == pl.String
+        else scores.head(0)
     )
-    scores = scores.merge(
-        baseline_wis,
-        on=join_columns,
-        how="left",
-        sort=False,
+    if baseline_scores.is_empty() or "wis" not in scores.columns:
+        return scores.with_columns(pl.lit(None, dtype=pl.Float64).alias("rwis"))
+    join_columns = ["reference_date", "target_end_date", "location", "horizon"]
+    baseline_wis = baseline_scores.select(
+        *join_columns, pl.col("wis").alias("baseline_wis")
     )
-    scores["rwis"] = scores["wis"].div(scores["baseline_wis"]).where(
-        scores["baseline_wis"].notna() & scores["baseline_wis"].ne(0)
+    return (
+        scores.join(
+            baseline_wis,
+            on=join_columns,
+            how="left",
+            maintain_order="left",
+            nulls_equal=True,
+        )
+        .with_columns(
+            pl.when(
+                pl.col("baseline_wis").is_not_null() & (pl.col("baseline_wis") != 0)
+            )
+            .then(pl.col("wis") / pl.col("baseline_wis"))
+            .otherwise(None)
+            .alias("rwis")
+        )
+        .drop("baseline_wis")
     )
-    return scores.drop(columns=["baseline_wis"])
 
 
-def score_forecasts(data: pd.DataFrame, baseline_model: str) -> pd.DataFrame:
+def score_forecasts(data: Any, baseline_model: str) -> pl.DataFrame:
     """Score quantile forecasts and return the fixed EpiBench output schema."""
     logger.info("Scoring quantile forecasts in Python...")
     try:
@@ -558,11 +562,11 @@ def score_forecasts(data: pd.DataFrame, baseline_model: str) -> pd.DataFrame:
     scores = _add_relative_wis(scores, baseline_model)
 
     # Individual metric failures do not abort scoring. If unable to calculate,
-    # e.g., `interval_coverage_95`, all values for that col will be NA and the 
+    # e.g., `interval_coverage_95`, all values for that col will be NA and the
     # process will continue. This mirrors `scoringutils`
     for column in OUTPUT_COLUMNS:
-        if column not in scores:
-            scores[column] = pd.NA
+        if column not in scores.columns:
+            scores = scores.with_columns(pl.lit(None, dtype=pl.Float64).alias(column))
 
     logger.info("Success ✅")
-    return scores.loc[:, OUTPUT_COLUMNS]
+    return to_polars(scores.select(OUTPUT_COLUMNS))

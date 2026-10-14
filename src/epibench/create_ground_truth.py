@@ -6,14 +6,18 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
+
+from .dataframes import to_polars, normalize_dates, date_value, read_csv
 import pygit2
 
 from .hub_date_utils import create_season_start
 
 
 logger = logging.getLogger(__name__)
-hub_target_data_schema_module = importlib.import_module("hubdata.create_target_data_schema")
+hub_target_data_schema_module = importlib.import_module(
+    "hubdata.create_target_data_schema"
+)
 
 AS_OF_COLUMN = "as_of"
 
@@ -46,19 +50,23 @@ def _ground_truth_path(hub_path: Path, gt_file: str) -> Path:
     """Resolve a user-configured ground truth path within the hub repository."""
     relative_path = Path(gt_file)
     if relative_path.is_absolute():
-        raise ValueError("`ground_truth_file` must be a path relative to the hub repository root.")
+        raise ValueError(
+            "`ground_truth_file` must be a path relative to the hub repository root."
+        )
 
     resolved_hub_path = hub_path.resolve()
     resolved_gt_path = (resolved_hub_path / relative_path).resolve()
     try:
         resolved_gt_path.relative_to(resolved_hub_path)
     except ValueError as error:
-        raise ValueError("`ground_truth_file` must not resolve outside the hub repository.") from error
+        raise ValueError(
+            "`ground_truth_file` must not resolve outside the hub repository."
+        ) from error
 
     return resolved_gt_path
 
 
-def _read_ground_truth_file(hub_path: Path, gt_file: str) -> pd.DataFrame:
+def _read_ground_truth_file(hub_path: Path, gt_file: str) -> pl.DataFrame:
     """Read the configured CSV or Parquet ground truth file from a hub checkout."""
     ground_truth_path = _ground_truth_path(hub_path, gt_file)
     if not ground_truth_path.is_file():
@@ -67,14 +75,14 @@ def _read_ground_truth_file(hub_path: Path, gt_file: str) -> pd.DataFrame:
         )
 
     if ground_truth_path.suffix.lower() == ".parquet":
-        return pd.read_parquet(ground_truth_path)
+        return pl.read_parquet(ground_truth_path)
     if ground_truth_path.suffix.lower() == ".csv":
-        return pd.read_csv(ground_truth_path, low_memory=False)
+        return read_csv(ground_truth_path)
 
     raise ValueError("`ground_truth_file` must point to a .csv or .parquet file.")
 
 
-def _validate_columns(df: pd.DataFrame, required_columns: list[str]) -> None:
+def _validate_columns(df: pl.DataFrame, required_columns: list[str]) -> None:
     """Require all columns needed to construct the create-pipeline output."""
     missing_columns = set(required_columns).difference(df.columns)
     if missing_columns:
@@ -84,99 +92,92 @@ def _validate_columns(df: pd.DataFrame, required_columns: list[str]) -> None:
         )
 
 
-def _filter_target_if_present(df: pd.DataFrame, target: str) -> tuple[pd.DataFrame, bool]:
+def _filter_target_if_present(
+    df: pl.DataFrame, target: str
+) -> tuple[pl.DataFrame, bool]:
     """Filter the requested target when the source data supplies a target column."""
     if "target" not in df.columns:
         return df, False
 
-    filtered_df = df[df["target"] == target].copy()
-    if filtered_df.empty:
+    filtered_df = df.filter(pl.col("target") == target)
+    if filtered_df.is_empty():
         raise ValueError(f"Could not find target {target!r} in ground truth data.")
     return filtered_df, True
 
 
 def _resolve_duplicates(
-    df: pd.DataFrame,
-    vintage_date: str,
-    gt_file: str,
-) -> pd.DataFrame:
-    """Resolve duplicates across the complete source schema when an as-of date is available."""
+    df: pl.DataFrame, vintage_date: str, gt_file: str
+) -> pl.DataFrame:
+    """Resolve duplicates across the complete schema using the newest vintage."""
+    df = to_polars(df)
     if AS_OF_COLUMN not in df.columns:
-        duplicate_rows = df.loc[df.duplicated(keep=False)]
-        if duplicate_rows.empty:
+        duplicate_rows = df.filter(df.is_duplicated())
+        if duplicate_rows.is_empty():
             return df
-
-        duplicates = duplicate_rows.to_dict(orient="records")
         raise ValueError(
-            f"DUPLICATES DETECTED: {duplicates}\n"
+            f"DUPLICATES DETECTED: {duplicate_rows.to_dicts()}\n"
             "COULD NOT RESOLVE DUPLICATES BECAUSE NO `as_of` column is present in "
             f"{gt_file}."
         )
-
-    as_of_values = pd.to_datetime(df[AS_OF_COLUMN], errors="coerce")
-    if as_of_values.isna().any():
-        raise ValueError("Ground truth data contains missing or invalid `as_of` values.")
-
-    cutoff_timestamp = pd.Timestamp(vintage_date)
-    available_df = df.assign(_as_of_sort_value=as_of_values)
-    available_df = available_df[available_df["_as_of_sort_value"] <= cutoff_timestamp]
-    if available_df.empty:
+    as_of_values = normalize_dates(
+        df.select(AS_OF_COLUMN), [AS_OF_COLUMN], strict=False
+    )[AS_OF_COLUMN]
+    if as_of_values.is_null().any():
+        raise ValueError(
+            "Ground truth data contains missing or invalid `as_of` values."
+        )
+    available = df.with_columns(as_of_values.alias("_as_of_sort_value")).filter(
+        pl.col("_as_of_sort_value") <= date_value(vintage_date)
+    )
+    if available.is_empty():
         raise ValueError(
             f"Ground truth data does not contain an `as_of` vintage on or before {vintage_date}."
         )
-
-    duplicate_key_columns = [column for column in df.columns if column != AS_OF_COLUMN]
-
-    # Stable sorting makes an exact as_of tie resolve to the later source-file row.
     return (
-        available_df.sort_values(by="_as_of_sort_value", kind="stable")
-        .drop_duplicates(
-            subset=duplicate_key_columns,
+        available.sort("_as_of_sort_value", maintain_order=True)
+        .unique(
+            subset=[c for c in df.columns if c != AS_OF_COLUMN],
             keep="last",
+            maintain_order=True,
         )
-        .drop(columns="_as_of_sort_value")
+        .drop("_as_of_sort_value")
     )
 
 
 def _filter_to_cutoff_target_end_date(
-    df: pd.DataFrame, cutoff_date: str, date_column: str
-) -> pd.DataFrame:
-    """Keep observations whose target end date is no later than the requested cutoff."""
-    target_end_dates = pd.to_datetime(df[date_column], errors="coerce")
-    return df.loc[target_end_dates <= pd.Timestamp(cutoff_date)].copy()
+    df: pl.DataFrame, cutoff_date: str, date_column: str
+) -> pl.DataFrame:
+    dates = normalize_dates(df.select(date_column), [date_column], strict=False)[
+        date_column
+    ]
+    return df.filter(dates <= date_value(cutoff_date))
 
 
 def _keep_output_columns(
-    df: pd.DataFrame,
+    df: pl.DataFrame,
     date_column: str,
     location_column: str,
     observed_column: str,
     target: str,
-) -> pd.DataFrame:
-    """Return standardized create-pipeline columns, including ``target`` and ``observed``."""
-    standardized_df = (
-        df.loc[:, [date_column, location_column, observed_column]]
-        .rename(
-            columns={
-                date_column: "target_end_date",
-                location_column: "location",
-                observed_column: "observed",
-            }
-        )
-        .copy()
+) -> pl.DataFrame:
+    """Return the existing standardized create-pipeline schema."""
+    return df.select(
+        pl.col(date_column).alias("target_end_date"),
+        pl.col(location_column).alias("location"),
+        pl.col("target") if "target" in df.columns else pl.lit(target).alias("target"),
+        pl.col(observed_column).alias("observed"),
     )
-    standardized_df["target"] = df["target"] if "target" in df.columns else target
-    return standardized_df.loc[:, ["target_end_date", "location", "target", "observed"]]
 
 
-def _filter_to_reference_season(df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
-    """Keep fetched observations from July 1 through the task's reference date."""
-    reference_day = datetime.strptime(reference_date, "%Y-%m-%d").date()
-    target_end_dates = pd.to_datetime(df["target_end_date"], errors="coerce").dt.date
-    return df.loc[
-        (target_end_dates >= create_season_start(reference_day))
-        & (target_end_dates <= reference_day)
-    ].copy()
+def _filter_to_reference_season(df: pl.DataFrame, reference_date: str) -> pl.DataFrame:
+    """Keep observations from July 1 through the task reference date."""
+    reference_day = date_value(reference_date).date()
+    dates = normalize_dates(
+        df.select("target_end_date"), ["target_end_date"], strict=False
+    )["target_end_date"].dt.date()
+    return df.filter(
+        dates.is_between(create_season_start(reference_day), reference_day)
+    )
 
 
 def _checkout_gt_fetch(
@@ -188,9 +189,11 @@ def _checkout_gt_fetch(
     date_column: str,
     date: str,
     main_branch: str = "main",
-) -> tuple[pd.DataFrame, bool]:
+) -> tuple[pl.DataFrame, bool]:
     """Fetch configured ground truth from the repository state at ``date``."""
-    date_obj = datetime.strptime(date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+    date_obj = datetime.strptime(date, "%Y-%m-%d").replace(
+        hour=23, minute=59, second=59
+    )
     repo = pygit2.Repository(hub_path)
 
     commit = repo[repo.head.target]
@@ -223,7 +226,9 @@ def _checkout_gt_fetch(
         gt = _resolve_duplicates(gt, vintage_date=date, gt_file=gt_file)
 
         return (
-            _keep_output_columns(gt, date_column, location_column, observed_column, target),
+            _keep_output_columns(
+                gt, date_column, location_column, observed_column, target
+            ),
             target_column_found,
         )
     finally:
@@ -238,16 +243,21 @@ def _asof_gt_fetch(
     location_column: str,
     date_column: str,
     date_s: list[str] | str,
-) -> tuple[pd.DataFrame, str, bool]:
+    source_data: pl.DataFrame | None = None,
+) -> tuple[pl.DataFrame, str, bool]:
     """Fetch configured ground truth and select the newest as-of revision per key."""
     cutoff_date = max(date_s) if isinstance(date_s, list) else date_s
-    gt = _read_ground_truth_file(hub_path, gt_file)
+    gt = (
+        source_data
+        if source_data is not None
+        else _read_ground_truth_file(hub_path, gt_file)
+    )
     _validate_columns(gt, [date_column, location_column, observed_column])
     gt, target_column_found = _filter_target_if_present(gt, target)
     gt = _resolve_duplicates(gt, vintage_date=cutoff_date, gt_file=gt_file)
     gt = _filter_to_cutoff_target_end_date(gt, cutoff_date, date_column)
 
-    if gt.empty:
+    if gt.is_empty():
         raise ValueError(
             f"Ground truth data does not contain target {target!r} through {cutoff_date}."
         )
@@ -270,14 +280,23 @@ def gt_from_hub(
     data_cutoff_dates: list[str],
     vintaging: bool,
     vintaging_method: str | None,
-) -> dict[str, pd.DataFrame]:
+) -> dict[str, pl.DataFrame]:
     """Fetch configured ground truth with the requested vintaging strategy."""
     if len(reference_dates) != len(data_cutoff_dates):
-        raise ValueError("`reference_dates` and `data_cutoff_dates` must have the same length.")
+        raise ValueError(
+            "`reference_dates` and `data_cutoff_dates` must have the same length."
+        )
 
     gt_dict = {}
     target_column_presence = []
     if vintaging:
+        # As-of vintages share one immutable source snapshot; checkout vintages
+        # must still read each historical repository state independently.
+        asof_source = (
+            _read_ground_truth_file(hub_path, gt_file)
+            if vintaging_method == "as_of"
+            else None
+        )
         for reference_date, cutoff_date in zip(reference_dates, data_cutoff_dates):
             if vintaging_method == "checkout":
                 gt, target_column_found = _checkout_gt_fetch(
@@ -289,7 +308,9 @@ def gt_from_hub(
                     date_column=date_column,
                     date=cutoff_date,
                 )
-                gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
+                gt_dict[str(reference_date)] = _filter_to_reference_season(
+                    gt, reference_date
+                )
             elif vintaging_method == "as_of":
                 gt, _, target_column_found = _asof_gt_fetch(
                     hub_path=hub_path,
@@ -299,10 +320,15 @@ def gt_from_hub(
                     location_column=location_column,
                     date_column=date_column,
                     date_s=cutoff_date,
+                    source_data=asof_source,
                 )
-                gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
+                gt_dict[str(reference_date)] = _filter_to_reference_season(
+                    gt, reference_date
+                )
             else:
-                raise ValueError(f"Unsupported `vintaging_method`: {vintaging_method!r}.")
+                raise ValueError(
+                    f"Unsupported `vintaging_method`: {vintaging_method!r}."
+                )
             target_column_presence.append(target_column_found)
     else:
         gt, _, target_column_found = _asof_gt_fetch(

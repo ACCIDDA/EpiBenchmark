@@ -29,7 +29,7 @@ for task in challenge.tasks:
 
 ### `Challenge` and `Task`
 
-`Challenge` is a mutable dataclass with `instructions: str | None`, `tasks: list[Task]`, and `notes: str | None`. Instructions and notes exist for library challenges, and are `None` for results of user `create()` function calls. `Task` is a mutable dataclass with `name: str` (a `YYYY-MM-DD` reference date) and `gt_df: pandas.DataFrame` (ground truth data vintaged for that date).
+`Challenge` is a mutable dataclass with `instructions: str | None`, `tasks: list[Task]`, and `notes: str | None`. Instructions and notes exist for library challenges, and are `None` for results of user `create()` function calls. `Task` is a mutable dataclass with `name: str` (a `YYYY-MM-DD` reference date) and `gt_df: polars.DataFrame` (ground truth data vintaged for that date).
 
 #### `Challenge.save(output_path: str | Path | None = None) -> None`
 
@@ -78,7 +78,7 @@ Be sure to use a ground-truth path and column names that match your hub. If usin
 
 Much like the command line scoring interface, there are two ways to score quantile model data with EpiBenchmark: against a library challenge (strict validation) or in user-defined parameters (non-strict validation). Both scoring functions return an in-memory `ScoreResult`. Forecast inputs must use the [Hubverse format](https://hubverse.io/); for more information on validation, visit the [scoring guide](commands/epibench-score.md). Call `ScoreResult.save()` to write files locally.
 
-### `read_forecasts(path: str | Path) -> pandas.DataFrame`
+### `read_forecasts(path: str | Path) -> polars.DataFrame`
 
 Read a forecast CSV or Parquet file with `str` data types for columns `horizon`, `location`, and `output_type_id` (preserves identifiers such as `01` and allows for proper validation during scoring). The scoring process later fully validates model data. Other columns retain their inferred CSV types or stored Parquet types. 
 
@@ -95,7 +95,7 @@ Run scoring with no relationship to a library challenge. Model data will not req
 | `hub_path` | `str \| Path` | Path to a local hub directory or link to a GitHub hub repository URL. |
 | `evaluation_start_date`, `evaluation_end_date` | `str \| date \| datetime` | Inclusive evaluation window; strings use `YYYY-MM-DD`. The end must be at least seven days after the start. Evaluation windows should span the `target_end_dates` of your model forecasts, not the reference dates. |
 | `target` | `str` | Data target to score. |
-| `models` | `Mapping[str, pandas.DataFrame]` | Submitted model name mapped to an in-memory DataFrame of Hubverse forecast data. |
+| `models` | `Mapping[str, Any]` | Submitted model name mapped to an in-memory DataFrame of Hubverse forecast data. |
 | `baseline_model` | `str` | Name of the baseline model for your hub (used to calculate relative WIS). |
 | `include_models` | `Sequence[str] \| None` | Names of other models from your hub you would like included in your scoring output. |
 
@@ -116,7 +116,7 @@ result.save("results/scoring")
 
 Standard scoring sets `mode` to `"standard"` and `scorecard` to `None`.
 
-### `score_challenge(challenge_name: str, model_data: pandas.DataFrame, model_name: str) -> ScoreResult`
+### `score_challenge(challenge_name: str, model_data: Any, model_name: str) -> ScoreResult`
 
 Run scoring for a model against a library challenge. `challenge_name` is a valid EpiBenchmark challenge name, `model_data` is an in-memory DataFrame of Hubverse forecast data, and `model_name` is the name that you would like to use to identify the submitted model. The challenge supplies the target, dates, required forecast facets, quantiles, and baseline. This route validates complete challenge coverage and computes a one-row scorecard. 
 
@@ -139,8 +139,8 @@ result.save("results/challenge-scoring")
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `mode` | `"standard" \| "challenge"` | Scoring route used. |
-| `scores` | `pandas.DataFrame` | Per-forecast-unit scores, including the baseline. |
-| `scorecard` | `pandas.DataFrame \| None` | One-row challenge scorecard; `None` for non-library challenge scoring. |
+| `scores` | `polars.DataFrame` | Per-forecast-unit scores, including the baseline. |
+| `scorecard` | `polars.DataFrame \| None` | One-row challenge scorecard; `None` for non-library challenge scoring. |
 | `summary` | `str` | Markdown-formatted summary of filtering and exclusions. |
 | `excluded_files` | `frozenset[str]` | Forecast data sources excluded during loading or validation. |
 | `output_dir`, `scores_path`, `scorecard_path`, `summary_path` | `Path \| None` | Locations populated by `save()`; initially `None`. `scorecard_path` stays `None` for standard scoring. |
@@ -153,7 +153,7 @@ Write `EpiBenchmark_scores.csv` and `summary.md` to `output_path`, or the curren
 
 Plotting takes an in-memory DataFrame (such as `ScoreResult.scores`) and writes `EpiBenchmark_plots.pdf`. Required score data columns are `model`, `reference_date`, `target_end_date`, `location`, `horizon`, `wis`, `overprediction`, `underprediction`, `dispersion`, and `rwis`. See the [plotting guide](commands/epibench-plot.md) for more.
 
-### `plot(score_file: pandas.DataFrame, output_path: str | Path | None = None) -> Path`
+### `plot(score_file: Any, output_path: str | Path | None = None) -> Path`
 
 Validate scores, produce summary figures, and return the PDF path. `output_path` defaults to the current working directory. An existing PDF raises `FileExistsError`.
 
@@ -161,7 +161,7 @@ Validate scores, produce summary figures, and return the PDF path. `output_path`
 pdf_path = epibench.plot(result.scores, "results/plots")
 ```
 
-### `plot_challenge(challenge_name: str, score_file: pandas.DataFrame, output_path: str | Path | None = None) -> Path`
+### `plot_challenge(challenge_name: str, score_file: Any, output_path: str | Path | None = None) -> Path`
 
 Plot scores from a library challenge scoring run; automatically includes scores for hub-submitting models that complete (w.r.t the challenge definition). `score_file` must contain the challenge baseline and at least one non-baseline model. User-provided models receive a `-USER-PROVIDED` suffix in the combined plot data. The function returns the PDF path and does not overwrite an existing PDF.
 
@@ -173,11 +173,9 @@ pdf_path = epibench.plot_challenge(
 )
 ```
 
-To plot saved scores, load the CSV into a DataFrame while preserving location codes as strings:
+To plot saved scores, load the CSV:
 
 ```python
-import pandas as pd
-
-scores = pd.read_csv("results/scoring/EpiBenchmark_scores.csv", dtype={"location": str})
+scores = epibench.read_forecasts("results/scoring/EpiBenchmark_scores.csv")
 epibench.plot(scores, "results/plots")
 ```

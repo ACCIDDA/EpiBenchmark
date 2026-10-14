@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
+
+from .dataframes import to_polars, is_dataframe
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,10 @@ class Task:
     """Ground truth for one challenge reference date."""
 
     name: str
-    gt_df: pd.DataFrame
+    gt_df: pl.DataFrame
+
+    def __post_init__(self):
+        self.gt_df = to_polars(self.gt_df)
 
 
 @dataclass
@@ -59,9 +64,7 @@ def _validate_tasks_for_saving(
     seen_dates: set[str] = set()
     for task_number, task in enumerate(tasks, start=1):
         if not isinstance(task, Task):
-            raise TypeError(
-                f"Challenge task {task_number} must be a Task instance."
-            )
+            raise TypeError(f"Challenge task {task_number} must be a Task instance.")
 
         reference_date = task.name
         ground_truth = task.gt_df
@@ -80,10 +83,12 @@ def _validate_tasks_for_saving(
                 "Dates must use YYYY-MM-DD format."
             )
         if reference_date in seen_dates:
-            raise ValueError(f"Challenge tasks contain duplicate date {reference_date!r}.")
-        if not isinstance(ground_truth, pd.DataFrame):
+            raise ValueError(
+                f"Challenge tasks contain duplicate date {reference_date!r}."
+            )
+        if not is_dataframe(ground_truth):
             raise TypeError(
-                f"Challenge task {reference_date!r} must contain a pandas DataFrame."
+                f"Challenge task {reference_date!r} must contain a compatible DataFrame."
             )
 
         seen_dates.add(reference_date)
@@ -123,7 +128,7 @@ def _save_tasks(
             date_dir.mkdir()
             filename = f"{reference_date.replace('-', '')}_gt.csv"
             ground_truth_path = date_dir / filename
-            task.gt_df.to_csv(ground_truth_path, index=False)
+            to_polars(task.gt_df).write_csv(ground_truth_path)
             task_rows.append(
                 {
                     "date": reference_date,
@@ -132,10 +137,9 @@ def _save_tasks(
             )
 
         if include_task_list:
-            pd.DataFrame(task_rows, columns=["date", "path_to_gt"]).to_csv(
-                task_list_path,
-                index=False,
-            )
+            pl.DataFrame(
+                task_rows, schema={"date": pl.String, "path_to_gt": pl.String}
+            ).write_csv(task_list_path)
     except BaseException:
         shutil.rmtree(gt_dir, ignore_errors=True)
         if include_task_list:
