@@ -16,7 +16,7 @@ target: "target-name" # one target per create run; exact match when the source h
 ground_truth_file: "target-data/time-series.parquet" # CSV or Parquet; relative to the hub root
 observed_column_name: "observation" # source observed-value column
 location_column_name: "location" # source location column
-date_column_name: "target_end_date" # source target-end-date column
+date_column_name: ["date", "target_end_date"] # first existing source target-end-date column
 
 dates: {
     start_date: YYYY-MM-DD, # dates are inclusive on both ends [,]
@@ -37,6 +37,8 @@ vintaging_offset: -3 # if your hub has an offset between the date forecasts are 
 
 output_path: "/..." # path to where you want output to be saved
 ```
+
+Each of the three column-name settings accepts either a string or an ordered list of alternative names. EpiBench uses the first existing name independently for each file or historical checkout. In this template, `date` takes precedence over `target_end_date`. See [column name fallbacks](../commands/epibench-create.md#column-name-fallbacks) for validation and failure behavior.
 
 ## `epibench score`
 
