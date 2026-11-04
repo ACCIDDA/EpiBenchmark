@@ -10,9 +10,9 @@ The configuration file for an `epibench create` run takes in the following keys:
 * `challenge_name`: whatever name you would like to give the "challenge" you are defining
 * `target`: the single target for this create run. If the source file contains `target`, it must exactly match this value.
 * `ground_truth_file`: a relative, hub-root path to the CSV or Parquet ground truth file. Absolute paths and paths outside the hub are rejected.
-* `observed_column_name`: the source column containing observed values.
-* `location_column_name`: the source column containing locations.
-* `date_column_name`: the source column containing target end dates.
+* `observed_column_name`: the source column containing observed values, as a string or an ordered list of alternative names.
+* `location_column_name`: the source column containing locations, as a string or an ordered list of alternative names.
+* `date_column_name`: the source column containing target end dates, as a string or an ordered list of alternative names.
 * `dates`: which dates of reference you want to fetch ground truth data for (`YYYY-MM-DD`)
     * this can be passes as a list of individually-specified dates, 
     * or as a dictionary with three keys: `start_date`, `end_date`, `freq`
@@ -29,9 +29,25 @@ The configuration file for an `epibench create` run takes in the following keys:
 
 See our [configuration templates](../getting-started/configuration-templates.md) for a copy-pasteable template of the `epibench create` config.
 
+## Column name fallbacks
+
+If source column names change over time, supply an ordered list for any of `observed_column_name`, `location_column_name`, or `date_column_name`. You can mix strings and lists in the same config:
+
+```yaml
+observed_column_name: "observation"
+location_column_name: "location"
+date_column_name: ["date", "target_end_date"]
+```
+
+For each file read, EpiBench selects the first listed name that exists for each field independently. In this example, it uses `date` when present and otherwise tries `target_end_date`. With `vintaging_method: "checkout"`, selection happens separately for each historical checkout, so different vintages can use different column names. This also works with `"as_of"` and with `vintaging: FALSE`, for both CSV and Parquet files.
+
+Names must match exactly, including capitalization. Each setting must be a non-empty string or a non-empty list of non-empty strings. If multiple candidates exist, the first wins; values from different columns are not combined. A column with missing or invalid data does not trigger a fallback. The three fields must resolve to distinct source columns. If no candidate exists, the run fails with an error listing the attempted names and available columns.
+
+Existing string settings continue to work. List order sets priority and affects the output folder's challenge hash.
+
 ## Source-file Requirements
 
-Every source file read during the run must contain the configured observed, location, and date columns. The `as_of` method also requires an `as_of` column.
+Every source file read during the run must contain at least one configured candidate for each of the observed, location, and date fields. The `as_of` method also requires an `as_of` column.
 
 The source `target` column is optional. If it is present, EpiBench filters the file to the configured target and preserves that column. If it is absent from every file, EpiBench adds a `target` column with the configured target value and logs a warning that it could not verify the target. A run fails if some vintages have a `target` column and others do not.
 

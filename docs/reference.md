@@ -47,12 +47,14 @@ Build ground-truth tasks from a hub and return them in memory. Using this functi
 | `target` | `str` | Data target to extract. |
 | `dates` | `list[str] \| dict[str, str]` | a list of `YYYY-MM-DD` reference dates, or a dict containing keys: `start_date`, `end_date`, and frequencey (`freq`). `freq` must be referenced as `"<num> week"` or `"<num> weeks"`.|
 | `ground_truth_file` | `str` | Path to the ground truth data file you would like ground truth data to be pulled from. Must be relative to the root directory of the specified hub. |
-| `observed_column_name` | `str` | Name of the column in the specified ground truth data file that contains the observed values. |
-| `location_column_name` | `str` | Name of the column in the specified ground truth data file that contains the location values. |
-| `date_column_name` | `str` | Name of the column in the specified ground truth data file that contains the date values. |
+| `observed_column_name` | `str \| list[str]` | Source column containing observed values, or an ordered list of alternative names. |
+| `location_column_name` | `str \| list[str]` | Source column containing location values, or an ordered list of alternative names. |
+| `date_column_name` | `str \| list[str]` | Source column containing target end dates, or an ordered list of alternative names. |
 | `vintaging` | `bool` | Whether or not to vintage ground truth to each reference date provided. Setting to `False` will retrieve most updated ground truth data to cover your date span. |
 | `vintaging_method` | `"as_of" \| "checkout" \| None` | Required when `vintaging=True`. |
 | `vintaging_offset` | `int \| None` | For each reference date, how many days before/after should ground truth retrieval be cut off. Pass `0` for no offset, `-3` for 3 days before the reference date, etc. |
+
+For each of the three column-name arguments, pass a non-empty string or a non-empty list of non-empty strings. EpiBench selects the first name present in each file, independently for each field and historical checkout. Matches are exact and case-sensitive. If multiple names exist, the first takes precedence; missing or invalid values in that column do not trigger a fallback or merging with another column. The selected date, location, and observed columns must be distinct. If no candidate exists, a `ValueError` lists the attempted names and available columns. Fallbacks work with CSV and Parquet, both vintaging methods, and unvintaged runs.
 
 Dates must be readable into `YYYY-MM-DD` format, no later than the current date, and be valid reference dates for your hub and season. List dates are deduplicated and sorted. A create run must stay within one July 1–June 30 season. For known hubs, the bundled date library also restricts reference dates to the hub's recorded weekly submission window. Each task contains only ground truth with `target_end_date` from that season's July 1 through its reference date, inclusive. Call `Challenge.save()` to save the resulting ground truth data files to your machine.
 
@@ -64,7 +66,7 @@ challenge = epibench.create(
     ground_truth_file="target-data/time-series.csv",
     observed_column_name="value",
     location_column_name="location",
-    date_column_name="target_end_date",
+    date_column_name=["target_end_date", "date"],
     vintaging=True,
     vintaging_method="as_of",
     vintaging_offset=-3
