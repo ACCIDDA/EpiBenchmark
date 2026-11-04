@@ -13,15 +13,15 @@ The challenge is derived from the 2025–2026 [COVID-19 Forecast Hub](https://gi
 | Pathogen | SARS-CoV-2 (COVID-19) |
 | Target | `wk inc covid hosp` |
 | Frequency | Weekly |
-| Reference-date span | 2025-07-05 to 2026-06-27 |
-| Forecast-date span | 2025-07-05 to 2026-07-18 |
+| Reference-date span | 2025-07-12 to 2026-06-27 |
+| Forecast-date span | 2025-07-12 to 2026-07-18 |
 | Locations | 52 jurisdictions, including `US` |
 | Horizons | 0, 1, 2, and 3 |
-| Required forecast tasks | 9,360 (45 reference dates × 52 locations × 4 horizons) |
+| Required forecast tasks | 9,152 (44 reference dates × 52 locations × 4 horizons) |
 | Provided ground truth | TBD |
 | Scoring truth | Final (latest-revised) values reported by the source hub |
 
-With the exception of a 7-week date discontinuity from 2025-10-04 through 2025-11-15 due to a U.S. government shutdown, this challenge has reference dates on a 1-week frequency from 2025-07-05 to 2026-06-27. There are 45 reference dates and 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded.
+With the exception of a 7-week date discontinuity from 2025-10-04 through 2025-11-15 due to a U.S. government shutdown, this challenge has reference dates on a 1-week frequency from 2025-07-12 to 2026-06-27. There are 44 reference dates and 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded.
 
 Provide forecasts for every reference date in `task_list.csv`, every required location, and every horizon. Horizon 0 is the reference week; horizons 1, 2, and 3 are the following three weeks. The target end date is the Saturday ending the corresponding US CDC/MMWR epiweek:
 
@@ -42,7 +42,7 @@ Use `wk inc covid hosp` for `target`. Locations must use the two-digit FIPS code
 Each row should follow this pattern:
 
 ```text
-2025-07-05,wk inc covid hosp,0,2025-07-05,01,quantile,0.025,10
+2025-07-12,wk inc covid hosp,0,2025-07-12,01,quantile,0.025,10
 ```
 
 ## Model name and metadata
