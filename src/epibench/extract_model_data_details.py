@@ -184,7 +184,7 @@ def _extra_models(
     if df.is_empty():
         raise ValueError(
             f"Could not find model quantile data for model {model_name} "
-            f"for target '{target}' between dates {date_value(eval_start_date).date()} and {date_value(eval_end_date).date()}. "
+            f"for target '{target}' between dates {date_value(eval_start_date)} and {date_value(eval_end_date)}. "
             f"Searched for locations found in provided model data: {locations}"
         )
     df = normalize_dates(df, ["reference_date"], strings=True).with_columns(
@@ -193,10 +193,9 @@ def _extra_models(
     df = normalize_horizon_column(df)
     if allowed_forecast_units is not None:
         allowed = normalize_dates(
-            to_polars(allowed_forecast_units), ["target_end_date"]
+            to_polars(allowed_forecast_units), ["reference_date"], strings=True
         )
-        df = df.with_columns(pl.col("target_end_date").dt.truncate("1d"))
-        allowed = allowed.with_columns(pl.col("target_end_date").dt.truncate("1d"))
+        allowed = normalize_dates(allowed, ["target_end_date"])
         df = df.join(
             allowed,
             on=["reference_date", "target_end_date", "location", "horizon"],
@@ -342,15 +341,6 @@ def extract_model_data_details(
             # read in as pl.DataFrame, ensure non-empty
             if is_dataframe(data_source):
                 df = to_polars(data_source)
-                df = normalize_dates(
-                    df,
-                    [
-                        c
-                        for c in ("reference_date", "target_end_date")
-                        if c in df.columns
-                    ],
-                    strings=True,
-                )
                 df = df.with_columns(
                     [
                         pl.col(c).cast(pl.String)

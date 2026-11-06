@@ -22,14 +22,11 @@ def _add_ground_truth_for_scoring(
     """
 
     # establish facets
+    model_df = normalize_dates(to_polars(model_df), ["target_end_date"])
     locations = sorted({str(location) for location in model_df["location"]})
     target = str(model_df["target"][0])
-    eval_start_date = normalize_dates(model_df, ["target_end_date"])[
-        "target_end_date"
-    ].min()
-    eval_end_date = normalize_dates(model_df, ["target_end_date"])[
-        "target_end_date"
-    ].max()
+    eval_start_date = model_df["target_end_date"].min()
+    eval_end_date = model_df["target_end_date"].max()
 
     # initialize `gto` object
     gto = ScoringGroundTruth(

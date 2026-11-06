@@ -10,7 +10,7 @@ from pathlib import Path
 
 import polars as pl
 
-from .dataframes import to_polars, is_dataframe
+from .dataframes import to_polars, is_dataframe, normalize_dates
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,14 @@ class Task:
 
     def __post_init__(self):
         self.gt_df = to_polars(self.gt_df)
+        self.gt_df = normalize_dates(
+            self.gt_df,
+            [
+                c
+                for c in ("target_end_date", "reference_date", "as_of")
+                if c in self.gt_df.columns
+            ],
+        )
 
 
 @dataclass

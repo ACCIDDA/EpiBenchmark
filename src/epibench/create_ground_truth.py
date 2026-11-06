@@ -110,6 +110,11 @@ def _resolve_duplicates(
 ) -> pl.DataFrame:
     """Resolve duplicates across the complete schema using the newest vintage."""
     df = to_polars(df)
+    df = normalize_dates(
+        df,
+        [c for c in ("target_end_date", AS_OF_COLUMN) if c in df.columns],
+        strict=False,
+    )
     if AS_OF_COLUMN not in df.columns:
         duplicate_rows = df.filter(df.is_duplicated())
         if duplicate_rows.is_empty():
@@ -147,10 +152,8 @@ def _resolve_duplicates(
 def _filter_to_cutoff_target_end_date(
     df: pl.DataFrame, cutoff_date: str, date_column: str
 ) -> pl.DataFrame:
-    dates = normalize_dates(df.select(date_column), [date_column], strict=False)[
-        date_column
-    ]
-    return df.filter(dates <= date_value(cutoff_date))
+    df = normalize_dates(df, [date_column], strict=False)
+    return df.filter(pl.col(date_column) <= date_value(cutoff_date))
 
 
 def _keep_output_columns(
@@ -161,22 +164,23 @@ def _keep_output_columns(
     target: str,
 ) -> pl.DataFrame:
     """Return the existing standardized create-pipeline schema."""
-    return df.select(
+    standardized = df.select(
         pl.col(date_column).alias("target_end_date"),
         pl.col(location_column).alias("location"),
         pl.col("target") if "target" in df.columns else pl.lit(target).alias("target"),
         pl.col(observed_column).alias("observed"),
     )
+    return normalize_dates(standardized, ["target_end_date"], strict=False)
 
 
 def _filter_to_reference_season(df: pl.DataFrame, reference_date: str) -> pl.DataFrame:
     """Keep observations from July 1 through the task reference date."""
-    reference_day = date_value(reference_date).date()
-    dates = normalize_dates(
-        df.select("target_end_date"), ["target_end_date"], strict=False
-    )["target_end_date"].dt.date()
+    reference_day = date_value(reference_date)
+    df = normalize_dates(df, ["target_end_date"], strict=False)
     return df.filter(
-        dates.is_between(create_season_start(reference_day), reference_day)
+        pl.col("target_end_date").is_between(
+            create_season_start(reference_day), reference_day
+        )
     )
 
 
@@ -222,6 +226,7 @@ def _checkout_gt_fetch(
     try:
         gt = _read_ground_truth_file(hub_path, gt_file)
         _validate_columns(gt, [date_column, location_column, observed_column])
+        gt = normalize_dates(gt, [date_column], strict=False)
         gt, target_column_found = _filter_target_if_present(gt, target)
         gt = _resolve_duplicates(gt, vintage_date=date, gt_file=gt_file)
 
@@ -246,13 +251,18 @@ def _asof_gt_fetch(
     source_data: pl.DataFrame | None = None,
 ) -> tuple[pl.DataFrame, str, bool]:
     """Fetch configured ground truth and select the newest as-of revision per key."""
-    cutoff_date = max(date_s) if isinstance(date_s, list) else date_s
+    cutoff_date = (
+        max(date_value(day) for day in date_s)
+        if isinstance(date_s, list)
+        else date_value(date_s)
+    ).isoformat()
     gt = (
         source_data
         if source_data is not None
         else _read_ground_truth_file(hub_path, gt_file)
     )
     _validate_columns(gt, [date_column, location_column, observed_column])
+    gt = normalize_dates(gt, [date_column], strict=False)
     gt, target_column_found = _filter_target_if_present(gt, target)
     gt = _resolve_duplicates(gt, vintage_date=cutoff_date, gt_file=gt_file)
     gt = _filter_to_cutoff_target_end_date(gt, cutoff_date, date_column)

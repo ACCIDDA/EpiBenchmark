@@ -2,14 +2,14 @@
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 import logging
 from pathlib import Path
 from typing import Any, Literal
 
 import polars as pl
 
-from .dataframes import to_polars, is_dataframe
+from .dataframes import to_polars, is_dataframe, date_value
 import yaml
 
 from .hub_date_utils import validate_create_dates_against_hub_rounds
@@ -24,8 +24,8 @@ class ScoreParameters:
     """Normalized inputs shared by YAML and programmatic scoring."""
 
     hub_path: Path
-    evaluation_start_date: datetime
-    evaluation_end_date: datetime
+    evaluation_start_date: date
+    evaluation_end_date: date
     target: str
     model_info: dict[str, list[Path | pl.DataFrame]]
     include_models: list[str]
@@ -242,13 +242,9 @@ def build_create_parameters(
     )
 
 
-def _score_date(value: str | date | datetime) -> datetime:
-    """Normalize an API or YAML evaluation date to a naive datetime."""
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, date):
-        return datetime.combine(value, time.min)
-    return datetime.strptime(value, "%Y-%m-%d")
+def _score_date(value: str | date | datetime) -> date:
+    """Normalize an API or YAML evaluation bound to a calendar day."""
+    return date_value(value)
 
 
 def build_score_parameters(
@@ -279,7 +275,7 @@ def build_score_parameters(
             f"Error: {error}"
         ) from error
 
-    current_date = datetime.now()
+    current_date = datetime.now().date()
     if start > current_date or end > current_date:
         raise ValueError(
             "Date Range Error: Evaluation dates cannot be in the future. "

@@ -49,15 +49,13 @@ def to_polars(data: Any) -> pl.DataFrame:
     return frame.with_columns(pl.col(pl.Float32, pl.Float64).fill_nan(None))
 
 
-def date_value(value: Any) -> datetime:
-    """Convert a scalar date used for evaluation bounds."""
+def date_value(value: Any) -> date:
+    """Return a scalar calendar date, ignoring time and retaining the local day."""
     if isinstance(value, datetime):
-        return value.replace(tzinfo=None)
+        return value.date()
     if isinstance(value, date):
-        return datetime.combine(value, datetime.min.time())
-    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(
-        tzinfo=None
-    )
+        return value
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
 
 
 def normalize_dates(
@@ -67,7 +65,7 @@ def normalize_dates(
     strings: bool = False,
     strict: bool = True,
 ) -> pl.DataFrame:
-    """Parse mixed date/date-time representations without a row-wise hot path."""
+    """Normalize local calendar days to Date columns or YYYY-MM-DD strings."""
     replacements = []
     for column in columns:
         source = frame[column]
@@ -117,6 +115,7 @@ def normalize_dates(
                     lookup, default=None, return_dtype=pl.Datetime("us")
                 )
                 parsed = parsed.fill_null(fallback)
+        parsed = parsed.dt.date()
         if strings:
             parsed = parsed.dt.strftime("%Y-%m-%d")
         replacements.append(parsed.alias(column))
