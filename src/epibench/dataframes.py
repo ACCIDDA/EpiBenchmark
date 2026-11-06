@@ -18,6 +18,24 @@ def is_dataframe(data: Any) -> bool:
     )
 
 
+def _from_pandas(data: Any) -> pl.DataFrame:
+    """Normalize columns with incompatible scalar types before conversion."""
+    try:
+        return pl.from_pandas(data, include_index=False)
+    except (pa.ArrowInvalid, pa.ArrowTypeError, TypeError):
+        columns = []
+        for name in data.columns:
+            values = data[name]
+            try:
+                column = pl.from_pandas(values)
+            except (pa.ArrowInvalid, pa.ArrowTypeError, TypeError):
+                # Nullable strings retain missing values and exact identifier
+                # spelling. Numeric and date validation follows conversion.
+                column = pl.from_pandas(values.astype("string"))
+            columns.append(column)
+        return pl.DataFrame(columns)
+
+
 def to_polars(data: Any) -> pl.DataFrame:
     """Convert supported tabular inputs to an eager DataFrame.
 
@@ -32,7 +50,7 @@ def to_polars(data: Any) -> pl.DataFrame:
         base.__module__.split(".")[0] == "pandas" and base.__name__ == "DataFrame"
         for base in type(data).__mro__
     ):
-        frame = pl.from_pandas(data, include_index=False)
+        frame = _from_pandas(data)
     elif isinstance(data, (pa.Table, pa.RecordBatch)):
         frame = pl.from_arrow(data)
     elif hasattr(data, "__arrow_c_stream__"):
