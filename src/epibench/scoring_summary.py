@@ -382,7 +382,13 @@ def format_missing_ground_truth_units_summary(scoring_data: pl.DataFrame) -> str
     ]
     missing_observed_units = (
         to_polars(scoring_data)
-        .filter(pl.col("observed").is_null())
+        .filter(
+            pl.col("observed").is_null()
+            | pl.col("observed")
+            .cast(pl.Float64, strict=False)
+            .is_nan()
+            .fill_null(False)
+        )
         .select(forecast_unit_columns)
         .unique(maintain_order=True)
     )

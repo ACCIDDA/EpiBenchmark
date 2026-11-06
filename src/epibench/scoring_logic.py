@@ -99,11 +99,19 @@ def _prepare_forecasts(data: pl.DataFrame) -> pl.DataFrame:
                 f"Forecast column '{column}' must be numeric."
             )
         try:
-            forecast = forecast.with_columns(pl.col(column).cast(pl.Float64))
+            forecast = forecast.with_columns(
+                pl.col(column).cast(pl.Float64).fill_nan(None)
+            )
         except (pl.exceptions.PolarsError, TypeError, ValueError) as error:
             raise ForecastValidationError(
                 f"Forecast column '{column}' must be numeric."
             ) from error
+
+    # Numeric strings can become NaN during conversion. Include those missing
+    # values as well as missing values in any original metadata columns.
+    missing_rows |= (
+        forecast.select(pl.any_horizontal(pl.all().is_null())).to_series().to_numpy()
+    )
 
     quantiles = forecast["quantile_level"].to_numpy()
     finite_quantiles = quantiles[~np.isnan(quantiles)]
@@ -255,7 +263,7 @@ def _bias(
             predicted[:, upper_index] - predicted[:, lower_index]
         )
 
-    result = np.empty(observed.size, dtype=np.float64)
+    result = np.full(observed.size, np.nan, dtype=np.float64)
     at_median = observed == median
     below = observed < median
     above = observed > median
