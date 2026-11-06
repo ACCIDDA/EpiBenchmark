@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Optional
 
 import click
-import pandas as pd
+import polars as pl
+
+from .dataframes import to_polars, read_csv
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -126,8 +128,10 @@ def _split_ground_truth(
     """Expand bundled ground truth using the challenge's required task list."""
     task_list = _read_task_list(_task_list_path(challenge_dir))
     reference_dates = definition["reference_dates"]
-    listed_dates = task_list["date"].tolist()
-    if len(listed_dates) != len(set(listed_dates)) or set(listed_dates) != set(reference_dates):
+    listed_dates = task_list["date"].to_list()
+    if len(listed_dates) != len(set(listed_dates)) or set(listed_dates) != set(
+        reference_dates
+    ):
         raise ValueError("Task list dates do not match challenge reference dates.")
 
     task_sources: dict[str, pa.Table] = {}
@@ -147,12 +151,12 @@ def _split_ground_truth(
     if set(reference_dates) != set(task_sources):
         raise ValueError("Challenge reference dates do not match ground-truth sources.")
 
-    for task in task_list.itertuples(index=False):
-        reference_date = str(task.date).strip()
+    for task in task_list.iter_rows(named=True):
+        reference_date = str(task["date"]).strip()
         _write_ground_truth_task(
             task_sources[reference_date],
             reference_date,
-            challenge_dir / str(task.path_to_gt).strip(),
+            challenge_dir / str(task["path_to_gt"]).strip(),
         )
 
 
@@ -182,13 +186,12 @@ def _task_list_path(challenge_dir: Path) -> Path:
     return challenge_dir / "task_list.csv"
 
 
-def _read_task_list(task_list_path: Path) -> pd.DataFrame:
+def _read_task_list(task_list_path: Path) -> pl.DataFrame:
     """Read a fetched task list while preserving its path and date strings."""
-    return pd.read_csv(
+    return pl.read_csv(
         task_list_path,
-        dtype={"date": str, "path_to_gt": str},
-        keep_default_na=False,
-    )
+        schema_overrides={"date": pl.String, "path_to_gt": pl.String},
+    ).with_columns(pl.col("date", "path_to_gt").fill_null(""))
 
 
 def _load_fetched_challenge(challenge_dir: Path, *, notes: str) -> Challenge:
@@ -221,20 +224,18 @@ def _load_ground_truth_tasks(challenge_dir: Path) -> list[Task]:
             "Fetched task_list.csv is missing required column(s): "
             f"{', '.join(sorted(missing_columns))}."
         )
-    if task_list.empty:
+    if task_list.is_empty():
         raise ValueError(
             "Fetched task_list.csv does not contain any ground-truth entries."
         )
-    if (task_list["date"].str.strip() == "").any():
-        raise ValueError(
-            "Fetched task_list.csv contains an empty reference date."
-        )
-    if (task_list["path_to_gt"].str.strip() == "").any():
-        raise ValueError(
-            "Fetched task_list.csv contains an empty ground-truth path."
-        )
+    if (task_list["date"].str.strip_chars() == "").any():
+        raise ValueError("Fetched task_list.csv contains an empty reference date.")
+    if (task_list["path_to_gt"].str.strip_chars() == "").any():
+        raise ValueError("Fetched task_list.csv contains an empty ground-truth path.")
 
-    duplicate_dates = task_list.loc[task_list["date"].duplicated(), "date"].tolist()
+    duplicate_dates = task_list.filter(pl.col("date").is_first_distinct().not_())[
+        "date"
+    ].to_list()
     if duplicate_dates:
         raise ValueError(
             "Fetched task_list.csv contains duplicate reference date(s): "
@@ -243,9 +244,9 @@ def _load_ground_truth_tasks(challenge_dir: Path) -> list[Task]:
 
     challenge_root = challenge_dir.resolve()
     tasks: list[Task] = []
-    for task in task_list.itertuples(index=False):
-        reference_date = task.date.strip()
-        relative_path = Path(task.path_to_gt.strip())
+    for task in task_list.iter_rows(named=True):
+        reference_date = task["date"].strip()
+        relative_path = Path(task["path_to_gt"].strip())
         if relative_path.is_absolute():
             raise ValueError(
                 f"Ground-truth path for {reference_date} must be relative to the challenge folder."
@@ -271,21 +272,21 @@ def _load_ground_truth_tasks(challenge_dir: Path) -> list[Task]:
             )
 
         if suffix == ".parquet":
-            ground_truth = pd.read_parquet(ground_truth_path)
-            if "target_end_date" in ground_truth:
-                ground_truth["target_end_date"] = ground_truth[
-                    "target_end_date"
-                ].astype(str)
-            if "location" in ground_truth:
-                ground_truth["location"] = ground_truth["location"].astype(str)
-            if "observed" in ground_truth:
-                ground_truth["observed"] = ground_truth["observed"].astype(float)
-        else:
-            ground_truth = pd.read_csv(
-                ground_truth_path,
-                dtype={"location": str},
-                low_memory=False,
+            ground_truth = to_polars(pl.read_parquet(ground_truth_path))
+            ground_truth = ground_truth.with_columns(
+                [
+                    pl.col(c).cast(pl.String)
+                    for c in ("target_end_date", "location")
+                    if c in ground_truth.columns
+                ]
+                + (
+                    [pl.col("observed").cast(pl.Float64)]
+                    if "observed" in ground_truth.columns
+                    else []
+                )
             )
+        else:
+            ground_truth = read_csv(ground_truth_path, string_columns=("location",))
         tasks.append(Task(name=reference_date, gt_df=ground_truth))
 
     return tasks

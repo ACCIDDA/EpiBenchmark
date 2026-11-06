@@ -2,12 +2,14 @@
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import logging
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
-import pandas as pd
+import polars as pl
+
+from .dataframes import to_polars, is_dataframe, date_value
 
 from .config import Config, ScoreParameters, build_score_parameters
 from .extract_model_data_details import extract_model_data_details
@@ -35,8 +37,8 @@ from .table_files import TABLE_SUFFIXES, table_files
 
 logger = logging.getLogger(__name__)
 
-SCORES_FILENAME = "EpiBenchmark_scores.csv" # TODO, will be changed with hash, shoudl be challenge-name
-SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv" # TODO, will be changed with hash, should be challenge-name
+SCORES_FILENAME = "EpiBenchmark_scores.csv"  # TODO, will be changed with hash, shoudl be challenge-name
+SCORECARD_FILENAME = "EpiBenchmark_scorecard.csv"  # TODO, will be changed with hash, should be challenge-name
 FORECAST_COLUMNS_FOR_SCORING = [
     "model",
     "reference_date",
@@ -60,14 +62,14 @@ class ScoreResult:
     """
 
     mode: Literal["standard", "challenge"]
-    scores: pd.DataFrame
-    scorecard: Optional[pd.DataFrame] # only present if a challenge scoring run
+    scores: pl.DataFrame
+    scorecard: Optional[pl.DataFrame]  # only present if a challenge scoring run
     summary: str
     excluded_files: frozenset[str]
     output_dir: Optional[Path] = None
-    scores_path: Optional[Path] = None # only populated if .save() method is used
-    scorecard_path: Optional[Path] = None # only populated if .save() method is used
-    summary_path: Optional[Path] = None # only populated if .save() method is used
+    scores_path: Optional[Path] = None  # only populated if .save() method is used
+    scorecard_path: Optional[Path] = None  # only populated if .save() method is used
+    summary_path: Optional[Path] = None  # only populated if .save() method is used
 
     def save(self, output_path: str | Path | None = None) -> None:
         """Save all applicable scoring artifacts.
@@ -106,7 +108,7 @@ class ScoreResult:
 
 def _write_output_csv(
     output_kind: Literal["scores", "scorecard"],
-    output_data: Union[pd.DataFrame, Dict[str, object]],
+    output_data: Union[pl.DataFrame, Dict[str, object]],
     output_dir: Path,
 ) -> Path:
     """
@@ -124,21 +126,21 @@ def _write_output_csv(
         output_path = output_dir / SCORECARD_FILENAME
         output_df = (
             output_data
-            if isinstance(output_data, pd.DataFrame)
-            else pd.DataFrame([output_data])
+            if isinstance(output_data, pl.DataFrame)
+            else pl.DataFrame([output_data])
         )
     # ensure type coercion worked
-    if not isinstance(output_df, pd.DataFrame):
-        raise TypeError("Score output data must be a pandas DataFrame.")
+    if not isinstance(output_df, pl.DataFrame):
+        raise TypeError("Score output data must be a compatible DataFrame.")
 
     # save
-    output_df.to_csv(output_path, index=False, encoding="utf-8-sig")
+    to_polars(output_df).write_csv(output_path, include_bom=True)
     return output_path
 
 
 def _combine_models_for_scoring(
-    model_dict: Mapping[str, pd.DataFrame],
-) -> pd.DataFrame:
+    model_dict: Mapping[str, pl.DataFrame],
+) -> pl.DataFrame:
     """Combine models using only columns consumed by the scoring pipeline."""
     standardized_models = []
     for model_name, forecast_df in model_dict.items():
@@ -149,9 +151,9 @@ def _combine_models_for_scoring(
                 f"{sorted(missing)}."
             )
         standardized_models.append(
-            forecast_df.loc[:, FORECAST_COLUMNS_FOR_SCORING]
+            to_polars(forecast_df).select(FORECAST_COLUMNS_FOR_SCORING)
         )
-    return pd.concat(standardized_models, ignore_index=True)
+    return pl.concat(standardized_models, how="vertical_relaxed")
 
 
 def _resolve_model_info(
@@ -192,7 +194,7 @@ def score(
     evaluation_start_date: str | date | datetime,
     evaluation_end_date: str | date | datetime,
     target: str,
-    models: Mapping[str, pd.DataFrame],
+    models: Mapping[str, Any],
     baseline_model: str,
     include_models: Sequence[str] | None = None,
 ) -> ScoreResult:
@@ -204,10 +206,12 @@ def score(
     Results remain in memory until :meth:`ScoreResult.save` is called.
     """
     if not isinstance(models, Mapping) or not models:
-        raise ValueError("`models` must be a non-empty mapping of model names to DataFrames.")
+        raise ValueError(
+            "`models` must be a non-empty mapping of model names to DataFrames."
+        )
     for model_name, forecast_df in models.items():
-        if not isinstance(forecast_df, pd.DataFrame):
-            raise TypeError(f"`models[{model_name!r}]` must be a pandas DataFrame.")
+        if not is_dataframe(forecast_df):
+            raise TypeError(f"`models[{model_name!r}]` must be a compatible DataFrame.")
     logger.info("Validating scoring inputs...")
     parameters = build_score_parameters(
         hub_path=hub_path,
@@ -298,7 +302,7 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
     else:
         global_target_end_dates = sorted(
             {
-                pd.Timestamp(target_end_date).strftime("%Y-%m-%d")
+                date_value(target_end_date).strftime("%Y-%m-%d")
                 for forecast_df in submitted_model_dict.values()
                 for target_end_date in forecast_df["target_end_date"]
             }
@@ -314,9 +318,13 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
     )
 
     df = _combine_models_for_scoring(model_dict)
-    df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
-        columns=["target"]
-    )
+    df = df.join(
+        gto.gt,
+        on=["target", "target_end_date", "location"],
+        how="inner",
+        maintain_order="left",
+        nulls_equal=True,
+    ).drop("target")
     missing_ground_truth_units_summary = format_missing_ground_truth_units_summary(df)
 
     logger.info("Scoring model data...")
@@ -342,7 +350,7 @@ def _score_standard(parameters: ScoreParameters) -> ScoreResult:
 
 def score_challenge(
     challenge_name: str,
-    model_data: pd.DataFrame,
+    model_data: Any,
     model_name: str,
 ) -> ScoreResult:
     """Score a model against a bundled EpiBench library challenge.
@@ -355,11 +363,11 @@ def score_challenge(
     ``model_data`` is an in-memory Hubverse forecast DataFrame. Results remain
     in memory until :meth:`ScoreResult.save` is called.
     """
-    if not isinstance(model_data, pd.DataFrame):
-        raise TypeError("`model_data` must be a pandas DataFrame.")
+    if not is_dataframe(model_data):
+        raise TypeError("`model_data` must be a compatible DataFrame.")
     return _score_challenge_with_model_info(
         challenge_name,
-        {model_name: [model_data.copy()]},
+        {model_name: [to_polars(model_data)]},
         model_name,
     )
 
@@ -376,7 +384,7 @@ def _score_challenge_from_path(
 
 def _score_challenge_with_model_info(
     challenge_name: str,
-    model_info: dict[str, list[Path | pd.DataFrame]],
+    model_info: dict[str, list[Path | pl.DataFrame]],
     model_name: str,
 ) -> ScoreResult:
     """Score either in-memory or CLI file inputs against a library challenge."""
@@ -390,16 +398,15 @@ def _score_challenge_with_model_info(
     # set target
     target = str(challenge_definition["target"])
 
-    # derive eval window 
+    # derive eval window
     # (first ref date minus lowest horizon, last ref date plus highest horizon)
     challenge_reference_dates = challenge_definition.get("reference_dates")
-    reference_date_series = pd.to_datetime(challenge_reference_dates)
+    reference_date_series = [date_value(d) for d in challenge_reference_dates]
     horizon_offsets = [
-        pd.to_timedelta(int(horizon), unit="W")
-        for horizon in challenge_definition["horizons"]
+        timedelta(weeks=int(horizon)) for horizon in challenge_definition["horizons"]
     ]
-    evaluation_start_date = min(reference_date_series + min(horizon_offsets))
-    evaluation_end_date = max(reference_date_series + max(horizon_offsets))
+    evaluation_start_date = min(reference_date_series) + min(horizon_offsets)
+    evaluation_end_date = max(reference_date_series) + max(horizon_offsets)
 
     # ensure hub clone
     hub_path = establish_hub_path(challenge_definition["hub_path"])
@@ -443,7 +450,7 @@ def _score_challenge_with_model_info(
     )
     for model_name_key, forecast_df in model_dict.items():
         if "_source_file" in forecast_df.columns:
-            model_dict[model_name_key] = forecast_df.drop(columns=["_source_file"])
+            model_dict[model_name_key] = forecast_df.drop("_source_file")
 
     # fetch (unvintaged) gt data for scoring
     logger.info("Retrieving and formatting ground truth data...")
@@ -456,9 +463,13 @@ def _score_challenge_with_model_info(
     )
 
     df = _combine_models_for_scoring(model_dict)
-    df = df.merge(gto.gt, on=["target", "target_end_date", "location"]).drop(
-        columns=["target"]
-    )
+    df = df.join(
+        gto.gt,
+        on=["target", "target_end_date", "location"],
+        how="inner",
+        maintain_order="left",
+        nulls_equal=True,
+    ).drop("target")
     summary_arguments["missing_ground_truth_units_summary"] = (
         format_missing_ground_truth_units_summary(df)
     )
@@ -474,7 +485,7 @@ def _score_challenge_with_model_info(
         scorecard_function_names=challenge_definition["scorecard_function"],
         score_file=scores,
     )
-    scorecard = pd.DataFrame([scorecard_results])
+    scorecard = pl.DataFrame([scorecard_results])
 
     logger.info("Process executed successfully to end 🎉.")
     return ScoreResult(

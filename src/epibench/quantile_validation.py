@@ -3,11 +3,13 @@
 import logging
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-import pandas as pd
+import polars as pl
+
+from .dataframes import to_polars
 
 from .scoring_summary import record_filtered_facets
 
-# 1 forecast unit = 1 unique combination of model, target_end_date, reference_date, location, horizon 
+# 1 forecast unit = 1 unique combination of model, target_end_date, reference_date, location, horizon
 FORECAST_UNIT_COLUMNS = [
     "model",
     "reference_date",
@@ -19,15 +21,19 @@ QUANTILE_ROUNDING_DIGITS = 10
 logger = logging.getLogger(__name__)
 
 
-def _prepare_quantile_columns(forecast_df: pd.DataFrame) -> pd.DataFrame:
-    """Preserve exact quantile strings while deriving numeric helpers for validation."""
-    normalized = forecast_df.copy()
-    normalized["quantile_level"] = normalized["quantile_level"].astype("string")
-    normalized["quantile_level_raw"] = normalized["quantile_level"].fillna("<missing>")
-    normalized["quantile_level_numeric"] = pd.to_numeric(
-        normalized["quantile_level"], errors="coerce"
+def _prepare_quantile_columns(forecast_df: pl.DataFrame) -> pl.DataFrame:
+    """Preserve exact quantile strings while deriving numeric validation helpers."""
+    return (
+        to_polars(forecast_df)
+        .with_columns(pl.col("quantile_level").cast(pl.String))
+        .with_columns(
+            pl.col("quantile_level").fill_null("<missing>").alias("quantile_level_raw"),
+            pl.col("quantile_level")
+            .cast(pl.Float64, strict=False)
+            .fill_nan(None)
+            .alias("quantile_level_numeric"),
+        )
     )
-    return normalized
 
 
 def _sort_quantile_strings(
@@ -45,20 +51,44 @@ def _format_quantile_grid(quantile_levels: Iterable[str]) -> str:
     return ", ".join(str(quantile_level) for quantile_level in quantile_levels)
 
 
-def _finalize_quantile_column(normalized: pd.DataFrame) -> pd.DataFrame:
-    """Drop validation helpers and restore numeric quantiles for downstream scoring."""
-    finalized = normalized.copy()
-    finalized["quantile_level"] = finalized["quantile_level_numeric"].round(
-        QUANTILE_ROUNDING_DIGITS
+def _finalize_quantile_column(normalized: pl.DataFrame) -> pl.DataFrame:
+    """Restore numeric quantiles for scoring."""
+    return normalized.with_columns(
+        pl.col("quantile_level_numeric")
+        .round(QUANTILE_ROUNDING_DIGITS)
+        .alias("quantile_level")
+    ).drop("quantile_level_raw", "quantile_level_numeric")
+
+
+def _distinct_quantile_grids(normalized: pl.DataFrame):
+    """Validate each distinct grid once, retaining its first forecast unit.
+
+    Sorting before aggregation retains exact submitted strings and reports
+    errors using the first affected forecast unit.
+    """
+    grids = (
+        normalized.group_by(FORECAST_UNIT_COLUMNS, maintain_order=True)
+        .agg(
+            pl.col("quantile_level"),
+            pl.col("quantile_level_numeric"),
+        )
+        .unique(subset=["quantile_level"], maintain_order=True)
     )
-    return finalized.drop(
-        columns=["quantile_level_raw", "quantile_level_numeric"],
-        errors="ignore",
-    )
+    for row in grids.iter_rows(named=True):
+        yield None, pl.DataFrame(
+            {
+                **{
+                    c: [row[c]] * len(row["quantile_level"])
+                    for c in FORECAST_UNIT_COLUMNS
+                },
+                "quantile_level": row["quantile_level"],
+                "quantile_level_numeric": row["quantile_level_numeric"],
+            }
+        )
 
 
 def validate_for_scoring_library_challenge_quantiles(
-    model_dict: Dict[str, pd.DataFrame],
+    model_dict: Dict[str, pl.DataFrame],
     quantiles: List[str],
     filtered_facets_by_file: Optional[Dict[str, Set[str]]] = None,
 ) -> None:
@@ -73,7 +103,7 @@ def validate_for_scoring_library_challenge_quantiles(
         - quantiles outside of [0,1]
         - duplicate quantiles found in one forecast unit
         - any required quantiles are missing for a forecast unit
-    
+
     This function allows extra quantiles to exist, but it filters
     them out and logs this to the user.
     """
@@ -86,12 +116,12 @@ def validate_for_scoring_library_challenge_quantiles(
         normalized = _prepare_quantile_columns(forecast_df)
 
         # fail if any quantile level is non-numeric or outside [0, 1]
-        invalid_quantiles = normalized[
-            normalized["quantile_level_numeric"].isna()
-            | ~normalized["quantile_level_numeric"].between(0, 1, inclusive="both")
-        ]
-        if not invalid_quantiles.empty:
-            first_invalid = invalid_quantiles.iloc[0]
+        invalid_quantiles = normalized.filter(
+            pl.col("quantile_level_numeric").is_null()
+            | ~pl.col("quantile_level_numeric").is_between(0, 1)
+        )
+        if not invalid_quantiles.is_empty():
+            first_invalid = invalid_quantiles.row(0, named=True)
             forecast_unit = ", ".join(
                 f"{column}={first_invalid[column]}" for column in FORECAST_UNIT_COLUMNS
             )
@@ -105,20 +135,20 @@ def validate_for_scoring_library_challenge_quantiles(
         extra_quantiles_found = set()
         files_with_extra_quantiles = set()
 
-        normalized = normalized.sort_values(
-                by=["quantile_level_numeric", "quantile_level"],
-                kind="stable",
-            )
-        for _, group in normalized.groupby(FORECAST_UNIT_COLUMNS, sort=False):
-            forecast_unit_row = group.iloc[0]
+        normalized = normalized.sort(
+            ["quantile_level_numeric", "quantile_level"], maintain_order=True
+        )
+        for _, group in _distinct_quantile_grids(normalized):
+            forecast_unit_row = group.row(0, named=True)
             forecast_unit = ", ".join(
                 f"{column}={forecast_unit_row[column]}"
                 for column in FORECAST_UNIT_COLUMNS
             )
-            quantile_levels = tuple(str(quantile_level) for quantile_level in group["quantile_level"].tolist())
-            unique_quantile_levels = tuple(
-                _sort_quantile_strings(set(quantile_levels))
+            quantile_levels = tuple(
+                str(quantile_level)
+                for quantile_level in group["quantile_level"].to_list()
             )
+            unique_quantile_levels = tuple(_sort_quantile_strings(set(quantile_levels)))
 
             # fail if a forecast unit repeats the same quantile level more than once.
             if len(quantile_levels) != len(unique_quantile_levels):
@@ -145,9 +175,27 @@ def validate_for_scoring_library_challenge_quantiles(
                 set(unique_quantile_levels) - set(required_quantiles)
             )
             extra_quantiles_found.update(extra_quantiles)
-            if extra_quantiles and "_source_file" in group.columns:
-                files_with_extra_quantiles.update(group["_source_file"].dropna().unique())
         if extra_quantiles_found:
+            if "_source_file" in normalized.columns:
+                affected_units = (
+                    normalized.filter(
+                        ~pl.col("quantile_level").is_in(required_quantiles)
+                    )
+                    .select(FORECAST_UNIT_COLUMNS)
+                    .unique()
+                )
+                # Every file contributing to an affected unit is
+                # reported, including files containing only required quantiles.
+                files_with_extra_quantiles.update(
+                    normalized.join(
+                        affected_units,
+                        on=FORECAST_UNIT_COLUMNS,
+                        how="semi",
+                        nulls_equal=True,
+                    )["_source_file"]
+                    .drop_nulls()
+                    .unique()
+                )
             for input_file in sorted(files_with_extra_quantiles):
                 record_filtered_facets(
                     filtered_facets_by_file=filtered_facets_by_file,
@@ -155,12 +203,12 @@ def validate_for_scoring_library_challenge_quantiles(
                     facets=["quantile"],
                 )
 
-        filtered = normalized[normalized["quantile_level"].isin(required_quantiles)].copy()
+        filtered = normalized.filter(pl.col("quantile_level").is_in(required_quantiles))
         model_dict[model_name] = _finalize_quantile_column(filtered)
     logger.info("Success ✅")
 
 
-def validate_for_scoring_config_quantiles(model_dict: Dict[str, pd.DataFrame]) -> None:
+def validate_for_scoring_config_quantiles(model_dict: Dict[str, pl.DataFrame]) -> None:
     """
     Validate quantile data from user-supplied model data (specified via config).
 
@@ -187,12 +235,12 @@ def validate_for_scoring_config_quantiles(model_dict: Dict[str, pd.DataFrame]) -
         normalized = _prepare_quantile_columns(forecast_df)
 
         # fail if any quantile level is non-numeric or outside [0, 1]
-        invalid_quantiles = normalized[
-            normalized["quantile_level_numeric"].isna()
-            | ~normalized["quantile_level_numeric"].between(0, 1, inclusive="both")
-        ]
-        if not invalid_quantiles.empty:
-            first_invalid = invalid_quantiles.iloc[0]
+        invalid_quantiles = normalized.filter(
+            pl.col("quantile_level_numeric").is_null()
+            | ~pl.col("quantile_level_numeric").is_between(0, 1)
+        )
+        if not invalid_quantiles.is_empty():
+            first_invalid = invalid_quantiles.row(0, named=True)
             forecast_unit = ", ".join(
                 f"{column}={first_invalid[column]}" for column in FORECAST_UNIT_COLUMNS
             )
@@ -205,23 +253,25 @@ def validate_for_scoring_config_quantiles(model_dict: Dict[str, pd.DataFrame]) -
 
         # build forecast units (unique combinations of model, target_end_date, location, horizon)
         model_quantile_grid = None  # type: Optional[Tuple[str, ...]]
-        normalized = normalized.sort_values(
-                by=["quantile_level_numeric", "quantile_level"],
-                kind="stable",
-            )
-        for _, group in normalized.groupby(FORECAST_UNIT_COLUMNS, sort=False):
-            forecast_unit_row = group.iloc[0]
+        normalized = normalized.sort(
+            ["quantile_level_numeric", "quantile_level"], maintain_order=True
+        )
+        for _, group in _distinct_quantile_grids(normalized):
+            forecast_unit_row = group.row(0, named=True)
             forecast_unit = ", ".join(
                 f"{column}={forecast_unit_row[column]}"
                 for column in FORECAST_UNIT_COLUMNS
             )
             quantile_levels = tuple(
-                str(quantile_level) for quantile_level in group["quantile_level"].tolist()
+                str(quantile_level)
+                for quantile_level in group["quantile_level"].to_list()
             )
             unique_quantile_levels = tuple(_sort_quantile_strings(set(quantile_levels)))
             quantile_grid_text = _format_quantile_grid(unique_quantile_levels)
             unique_quantile_levels_numeric = tuple(
-                group.drop_duplicates(subset=["quantile_level"])["quantile_level_numeric"].tolist()
+                group.unique(subset=["quantile_level"], maintain_order=True)[
+                    "quantile_level_numeric"
+                ].to_list()
             )
 
             # fail if a forecast unit repeats the same quantile level more than once.
@@ -265,21 +315,24 @@ def validate_for_scoring_config_quantiles(model_dict: Dict[str, pd.DataFrame]) -
                     f"forecast unit {forecast_unit}. Found quantile grid "
                     f"[{quantile_grid_text}]."
                 )
-            
+
             # fail if any lower/upper quantile pair is not symmetric around 0.5
             for lower_quantile, upper_quantile in zip(
                 lower_quantiles,
                 reversed(upper_quantiles),
                 strict=True,
             ):
-                if round(lower_quantile + upper_quantile, QUANTILE_ROUNDING_DIGITS) != 1:
+                if (
+                    round(lower_quantile + upper_quantile, QUANTILE_ROUNDING_DIGITS)
+                    != 1
+                ):
                     raise ValueError(
                         f"Model '{model_name}' has a non-symmetric quantile grid "
                         f"for forecast unit {forecast_unit}. Quantiles "
                         f"{lower_quantile:g} and {upper_quantile:g} do not form a "
                         "symmetric pair around 0.5."
                     )
-                
+
             # fail if one model uses different quantile sets across forecast units
             if model_quantile_grid is None:
                 model_quantile_grid = unique_quantile_levels
@@ -292,8 +345,8 @@ def validate_for_scoring_config_quantiles(model_dict: Dict[str, pd.DataFrame]) -
                     f"but found [{quantile_grid_text}] for forecast unit "
                     f"{forecast_unit}."
                 )
-            
-        # fail if different models are using different quantile sets 
+
+        # fail if different models are using different quantile sets
         if expected_quantile_grid is None:
             expected_quantile_grid = model_quantile_grid
             expected_grid_model = model_name
