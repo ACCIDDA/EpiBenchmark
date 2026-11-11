@@ -12,6 +12,7 @@ The configuration file for an `epibench create` run takes in the following keys:
 * `ground_truth_file`: a relative, hub-root path to the CSV or Parquet ground truth file. Absolute paths and paths outside the hub are rejected.
 * `observed_column_name`: the source column containing observed values, as a string or an ordered list of alternative names.
 * `location_column_name`: the source column containing locations, as a string or an ordered list of alternative names.
+* `locations`: optional non-empty list of strings selecting location values (use locations as they appear in the target data). Omit it or use `null` to include all locations.
 * `date_column_name`: the source column containing target end dates, as a string or an ordered list of alternative names.
 * `dates`: which dates of reference you want to fetch ground truth data for (`YYYY-MM-DD`)
     * this can be passes as a list of individually-specified dates, 

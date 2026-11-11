@@ -37,7 +37,7 @@ Write each task to `gt/<reference-date>/<YYYYMMDD>_gt.csv` beneath `output_path`
 
 ## Create a challenge
 
-### `create(*, hub_path, target, dates, ground_truth_file, observed_column_name, location_column_name, date_column_name, vintaging, vintaging_method=None, vintaging_offset=None) -> Challenge`
+### `create(*, hub_path, target, dates, ground_truth_file, observed_column_name, location_column_name, date_column_name, vintaging, vintaging_method=None, vintaging_offset=None, locations=None) -> Challenge`
 
 Build ground-truth tasks from a hub and return them in memory. Using this functionality, users may specify their own retrievals of vintaged ground truth data. `create()` parameters are all keyword arguments.
 
@@ -49,6 +49,7 @@ Build ground-truth tasks from a hub and return them in memory. Using this functi
 | `ground_truth_file` | `str` | Path to the ground truth data file you would like ground truth data to be pulled from. Must be relative to the root directory of the specified hub. |
 | `observed_column_name` | `str \| list[str]` | Source column containing observed values, or an ordered list of alternative names. |
 | `location_column_name` | `str \| list[str]` | Source column containing location values, or an ordered list of alternative names. |
+| `locations` | `list[str] \| None` | Optional non-empty list of exact, case-sensitive location values. Every value must occur for the selected target in each source file before date/vintage filtering. Defaults to all locations. CSV codes retain leading zeros; Parquet values must already be strings. |
 | `date_column_name` | `str \| list[str]` | Source column containing target end dates, or an ordered list of alternative names. |
 | `vintaging` | `bool` | Whether or not to vintage ground truth to each reference date provided. Setting to `False` will retrieve most updated ground truth data to cover your date span. |
 | `vintaging_method` | `"as_of" \| "checkout" \| None` | Required when `vintaging=True`. |
@@ -66,6 +67,7 @@ challenge = epibench.create(
     ground_truth_file="target-data/time-series.csv",
     observed_column_name="value",
     location_column_name="location",
+    locations=["01", "06", "US"],
     date_column_name=["target_end_date", "date"],
     vintaging=True,
     vintaging_method="as_of",

@@ -29,6 +29,7 @@ def create(
     vintaging: bool,
     vintaging_method: Literal["as_of", "checkout"] | None = None,
     vintaging_offset: int | None = None,
+    locations: list[str] | None = None,
 ) -> Challenge:
     """Create vintaged ground-truth tasks (refrence dates) from explicit inputs.
 
@@ -37,6 +38,9 @@ def create(
     dictionary with ``start_date``, ``end_date``, and weekly ``freq`` entries.
     ``vintaging_method`` and ``vintaging_offset`` are required when
     ``vintaging`` is true.
+    ``locations`` optionally selects a non-empty list of exact, case-sensitive
+    location strings. Every requested value must exist in each source file's
+    location column for the selected target. Omitting it includes all locations.
     """
     logger.info("Validating create inputs...")
     parameters = build_create_parameters(
@@ -50,6 +54,7 @@ def create(
         vintaging=vintaging,
         vintaging_method=vintaging_method,
         vintaging_offset=vintaging_offset,
+        locations=locations,
     )
     return _create_challenge(parameters)
 
@@ -68,6 +73,7 @@ def _create_challenge(parameters: CreateParameters) -> Challenge:
         data_cutoff_dates=parameters.gt_cutoff_dates,
         vintaging=parameters.vintaging,
         vintaging_method=parameters.vintaging_method,
+        locations=parameters.locations,
     )
 
     tasks: list[Task] = []
@@ -144,6 +150,8 @@ def _build_challenge_id(
         "vintaging_method": parameters.vintaging_method,
         "vintaging_offset": parameters.vintaging_offset,
     }
+    if parameters.locations is not None:
+        hash_input["locations"] = sorted(set(parameters.locations))
     hash_string = json.dumps(hash_input, sort_keys=True)
     short_hash = hashlib.sha256(hash_string.encode("utf-8")).hexdigest()[:10]
     return f"{challenge_name}_{short_hash}"

@@ -28,6 +28,8 @@ dates: {
 # dates: [YYYY-MM-DD, YYYY-MM-DD, YYYY-MM-DD]
 # date provided must align with the cadence for the provided hub's submission schedule in a given season
 
+locations: ["01", "06", "US"] # optional exact location strings; omit to include all
+
 vintaging: TRUE # or FALSE; FALSE uses the latest as_of revision through the final requested date
 vintaging_method: "checkout" # or "as_of"; not required when vintaging is set to FALSE
 # "as_of" requires an as_of column and selects the latest available revision at each cutoff
