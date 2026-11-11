@@ -74,14 +74,34 @@ def _read_ground_truth_file(hub_path: Path, gt_file: str) -> pd.DataFrame:
     raise ValueError("`ground_truth_file` must point to a .csv or .parquet file.")
 
 
-def _validate_columns(df: pd.DataFrame, required_columns: list[str]) -> None:
-    """Require all columns needed to construct the create-pipeline output."""
-    missing_columns = set(required_columns).difference(df.columns)
-    if missing_columns:
+def _resolve_columns(
+    df: pd.DataFrame,
+    date_column: str | list[str],
+    location_column: str | list[str],
+    observed_column: str | list[str],
+) -> tuple[str, str, str]:
+    """Choose the first available name for each role in this source file."""
+    resolved = []
+    for parameter, names in (
+        ("date_column_name", date_column),
+        ("location_column_name", location_column),
+        ("observed_column_name", observed_column),
+    ):
+        candidates = names if isinstance(names, list) else [names]
+        column = next((name for name in candidates if name in df.columns), None)
+        if column is None:
+            raise ValueError(
+                f"Ground truth data is missing a required column for `{parameter}`. "
+                f"Tried: {candidates!r}. Available columns: {list(df.columns)!r}."
+            )
+        resolved.append(column)
+
+    if len(set(resolved)) != len(resolved):
         raise ValueError(
-            "Ground truth data is missing required column(s): "
-            f"{', '.join(sorted(missing_columns))}."
+            "`date_column_name`, `location_column_name`, and `observed_column_name` "
+            f"must resolve to distinct columns. Resolved columns: {resolved!r}."
         )
+    return resolved[0], resolved[1], resolved[2]
 
 
 def _filter_target_if_present(df: pd.DataFrame, target: str) -> tuple[pd.DataFrame, bool]:
@@ -183,9 +203,9 @@ def _checkout_gt_fetch(
     hub_path: Path,
     gt_file: str,
     target: str,
-    observed_column: str,
-    location_column: str,
-    date_column: str,
+    observed_column: str | list[str],
+    location_column: str | list[str],
+    date_column: str | list[str],
     date: str,
     main_branch: str = "main",
 ) -> tuple[pd.DataFrame, bool]:
@@ -218,7 +238,9 @@ def _checkout_gt_fetch(
 
     try:
         gt = _read_ground_truth_file(hub_path, gt_file)
-        _validate_columns(gt, [date_column, location_column, observed_column])
+        date_column, location_column, observed_column = _resolve_columns(
+            gt, date_column, location_column, observed_column
+        )
         gt, target_column_found = _filter_target_if_present(gt, target)
         gt = _resolve_duplicates(gt, vintage_date=date, gt_file=gt_file)
 
@@ -234,15 +256,17 @@ def _asof_gt_fetch(
     hub_path: Path,
     gt_file: str,
     target: str,
-    observed_column: str,
-    location_column: str,
-    date_column: str,
+    observed_column: str | list[str],
+    location_column: str | list[str],
+    date_column: str | list[str],
     date_s: list[str] | str,
 ) -> tuple[pd.DataFrame, str, bool]:
     """Fetch configured ground truth and select the newest as-of revision per key."""
     cutoff_date = max(date_s) if isinstance(date_s, list) else date_s
     gt = _read_ground_truth_file(hub_path, gt_file)
-    _validate_columns(gt, [date_column, location_column, observed_column])
+    date_column, location_column, observed_column = _resolve_columns(
+        gt, date_column, location_column, observed_column
+    )
     gt, target_column_found = _filter_target_if_present(gt, target)
     gt = _resolve_duplicates(gt, vintage_date=cutoff_date, gt_file=gt_file)
     gt = _filter_to_cutoff_target_end_date(gt, cutoff_date, date_column)
@@ -264,9 +288,9 @@ def gt_from_hub(
     target: str,
     reference_dates: list[str],
     gt_file: str,
-    observed_column: str,
-    location_column: str,
-    date_column: str,
+    observed_column: str | list[str],
+    location_column: str | list[str],
+    date_column: str | list[str],
     data_cutoff_dates: list[str],
     vintaging: bool,
     vintaging_method: str | None,

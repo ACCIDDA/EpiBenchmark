@@ -1,0 +1,74 @@
+# EpiBenchmark challenge: `epb_covid_inchosp_2024-2025_dev`
+
+This challenge is designed for [EpiBenchmark](https://accidda.github.io/EpiBenchmark/). Before preparing forecasts or scoring them, install the EpiBench command-line interface as described in the EpiBenchmark documentation.
+
+The challenge is derived from the 2024–2025 [COVID-19 Forecast Hub](https://github.com/CDCgov/covid19-forecast-hub). It evaluates forecasts of weekly incident COVID-19 hospital admissions, using the target name `wk inc covid hosp`.
+
+## Challenge details
+
+| Field | Value |
+| --- | --- |
+| Challenge name | `epb_covid_inchosp_2024-2025_dev` |
+| Source hub | [COVID-19 Forecast Hub](https://github.com/CDCgov/covid19-forecast-hub), 2024–2025 season |
+| Pathogen | SARS-CoV-2 (COVID-19) |
+| Target | `wk inc covid hosp` |
+| Frequency | Weekly |
+| Reference-date span | 2024-11-23 to 2025-06-28 |
+| Forecast-date span | 2024-11-23 to 2025-07-19 |
+| Locations | 52 jurisdictions, including `US` |
+| Horizons | 0, 1, 2, and 3 |
+| Required forecast tasks | 6,240 (30 reference dates × 52 locations × 4 horizons) |
+| Provided ground truth | TBD |
+| Scoring truth | Final (latest-revised) values reported by the source hub |
+
+With the exception of 1-week date discontinuities at 2024-11-30 and 2025-01-25, this challenge has reference dates on a 1-week frequency from 2024-11-23 to 2025-06-28. There are 30 reference dates and 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded.
+
+Provide forecasts for every reference date in `task_list.csv`, every required location, and every horizon. Horizon 0 is the reference week; horizons 1, 2, and 3 are the following three weeks. The target end date is the Saturday ending the corresponding US CDC/MMWR epiweek:
+
+```text
+target_end_date = reference_date + horizon * 7 days
+```
+
+Submit one CSV file with exactly these columns:
+
+```text
+reference_date,target,horizon,target_end_date,location,output_type,output_type_id,value
+```
+
+Each row represents one quantile forecast. Use `quantile` for `output_type`, and set `output_type_id` to one of `0.025`, `0.25`, `0.5`, `0.75`, or `0.975`. Every reference-date/location/horizon combination must have all five quantiles. Values are non-negative admission counts, and quantile values must not decrease as the quantile level increases.
+
+Use `wk inc covid hosp` for `target`. Locations must use the two-digit FIPS codes defined by the challenge, preserving leading zeroes, or `US` for the national forecast.
+
+Each row should follow this pattern:
+
+```text
+2024-11-23,wk inc covid hosp,0,2024-11-23,01,quantile,0.025,10
+```
+
+## Model name and metadata
+
+Use `--model-name` to identify the model in the score output. For reproducibility, use the model name in the filename, for example `<model_name>.csv` or `<model_name>.parquet`, and keep a separate `<model_name>.metadata.json` file beside it with the model name, model description, model version, forecast-generation date, and the software or data versions used. Do not add metadata as extra CSV columns.
+
+## Scoring
+
+After producing the forecast CSV, run the following command from the repository root. Replace `<model_name>` with your model name.
+
+```bash
+epibench score epb_covid_inchosp_2024-2025_dev \
+  --model-data-path "challenges/epb_covid_inchosp_2024-2025_dev/model-output/<model_name>.csv" \
+  --model-name "<model_name>" \
+  --output-path "results/epb_covid_inchosp_2024-2025_dev/<model_name>"
+```
+
+Forecasts are scored with the Weighted Interval Score (WIS) together with 50% and 95% prediction-interval coverage, and are compared against the hub baseline model (`CovidHub-baseline`).
+
+The command writes `EpiBenchmark_scores.csv`, `EpiBenchmark_scorecard.csv`, and `summary.md` to the output directory. It will not overwrite existing score files.
+
+**Report your scorecard.** The deliverable for this challenge is the `EpiBenchmark_scorecard.csv` produced by `epibench score epb_covid_inchosp_2024-2025_dev` — it is the official record of your model's performance and is what should be submitted or reported.
+
+## Source documentation
+
+- [COVID-19 Forecast Hub](https://github.com/CDCgov/covid19-forecast-hub)
+- [COVID-19 README](https://github.com/CDCgov/covid19-forecast-hub/blob/main/README.md)
+- [COVID-19 model-output directory](https://github.com/CDCgov/covid19-forecast-hub/tree/main/model-output)
+- [Hubverse](https://hubverse.io/)

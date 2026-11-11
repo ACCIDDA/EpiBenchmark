@@ -39,9 +39,9 @@ class CreateParameters:
     dates: list[str]
     gt_cutoff_dates: list[str]
     ground_truth_file: str
-    observed_column_name: str
-    location_column_name: str
-    date_column_name: str
+    observed_column_name: str | list[str]
+    location_column_name: str | list[str]
+    date_column_name: str | list[str]
     vintaging: bool
     vintaging_method: Literal["as_of", "checkout"] | None
     vintaging_offset: int
@@ -133,9 +133,9 @@ def build_create_parameters(
     target: str,
     dates: dict[str, object] | list[object],
     ground_truth_file: str,
-    observed_column_name: str,
-    location_column_name: str,
-    date_column_name: str,
+    observed_column_name: str | list[str],
+    location_column_name: str | list[str],
+    date_column_name: str | list[str],
     vintaging: bool | str,
     vintaging_method: str | None = None,
     vintaging_offset: int | None = None,
@@ -164,8 +164,13 @@ def build_create_parameters(
         "date_column_name": date_column_name,
     }
     for key, value in column_names.items():
-        if not isinstance(value, str) or not value:
-            raise ValueError(f"`{key}` must be a non-empty string.")
+        candidates = value if isinstance(value, list) else [value]
+        if not candidates or any(
+            not isinstance(candidate, str) or not candidate for candidate in candidates
+        ):
+            raise ValueError(
+                f"`{key}` must be a non-empty string or a non-empty list of non-empty strings."
+            )
 
     normalized_dates = _normalize_create_dates(dates)
 
