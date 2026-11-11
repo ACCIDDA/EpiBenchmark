@@ -28,21 +28,27 @@ class Challenge:
 
     ``instructions`` and ``notes`` are populated for library challenges and are
     ``None`` for challenges created directly from hub ground truth (i.e., the
-    "config style" route).
+    "config style" route). ``summary`` contains coverage diagnostics for created
+    challenges and is ``None`` for library challenges.
     """
 
     instructions: str | None
     tasks: list[Task]
     notes: str | None = None
+    summary: str | None = None
 
     def save(self, output_path: str | Path | None = None) -> None:
         """Save every ground-truth task beneath ``<output_path>/gt/``.
 
+        Created challenges also write their coverage report to ``summary.md``.
         The destination defaults to the current working directory. Existing
-        ``gt`` paths are never overwritten.
+        output paths are never overwritten.
         """
         output_dir = Path(output_path or Path.cwd()).expanduser().resolve()
-        _save_tasks(self.tasks, output_dir=output_dir, include_task_list=False)
+        _save_tasks(
+            self.tasks, output_dir=output_dir, include_task_list=False,
+            summary=self.summary,
+        )
         logger.info("Ground-truth tasks saved to %s", output_dir / "gt")
 
 
@@ -97,12 +103,16 @@ def _save_tasks(
     *,
     output_dir: Path,
     include_task_list: bool,
+    summary: str | None = None,
 ) -> None:
     """Save task CSVs, optionally including the create-CLI task list."""
     tasks_to_save = _validate_tasks_for_saving(tasks)
     gt_dir = output_dir / "gt"
     task_list_path = output_dir / "task_list.csv"
+    summary_path = output_dir / "summary.md"
     relevant_paths = [gt_dir]
+    if summary is not None:
+        relevant_paths.append(summary_path)
     if include_task_list:
         relevant_paths.append(task_list_path)
     conflicts = [path for path in relevant_paths if path.exists()]
@@ -136,8 +146,12 @@ def _save_tasks(
                 task_list_path,
                 index=False,
             )
+        if summary is not None:
+            summary_path.write_text(summary, encoding="utf-8")
     except BaseException:
         shutil.rmtree(gt_dir, ignore_errors=True)
         if include_task_list:
             task_list_path.unlink(missing_ok=True)
+        if summary is not None:
+            summary_path.unlink(missing_ok=True)
         raise

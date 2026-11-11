@@ -29,11 +29,11 @@ for task in challenge.tasks:
 
 ### `Challenge` and `Task`
 
-`Challenge` is a mutable dataclass with `instructions: str | None`, `tasks: list[Task]`, and `notes: str | None`. Instructions and notes exist for library challenges, and are `None` for results of user `create()` function calls. `Task` is a mutable dataclass with `name: str` (a `YYYY-MM-DD` reference date) and `gt_df: pandas.DataFrame` (ground truth data vintaged for that date).
+`Challenge` is a mutable dataclass with `instructions: str | None`, `tasks: list[Task]`, `notes: str | None`, and `summary: str | None`. Instructions and notes exist for library challenges, and are `None` for results of user `create()` function calls. Created challenges expose a coverage report in `summary`; saving writes it to `summary.md` alongside `gt/`. Library challenges have no coverage summary. `Task` is a mutable dataclass with `name: str` (a `YYYY-MM-DD` reference date) and `gt_df: pandas.DataFrame` (ground truth data vintaged for that date).
 
 #### `Challenge.save(output_path: str | Path | None = None) -> None`
 
-Write each task to `gt/<reference-date>/<YYYYMMDD>_gt.csv` beneath `output_path`, or the current working directory when `output_path` is omitted. The output directory is created if needed. A pre-existing `gt` directory found at the output path will cause a `FileExistsError`. 
+Write each task to `gt/<reference-date>/<YYYYMMDD>_gt.csv` beneath `output_path`, or the current working directory when `output_path` is omitted. Created challenges also write `summary.md`, describing non-fatal coverage gaps using the [source-date grid](commands/epibench-create.md#coverage-summary). The output directory is created if needed. A pre-existing `gt` directory, or `summary.md` when writing a coverage report, causes a `FileExistsError`.
 
 ## Create a challenge
 

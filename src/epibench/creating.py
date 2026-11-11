@@ -13,6 +13,7 @@ import pandas as pd
 from .challenge import Challenge, Task, _save_tasks
 from .config import Config, CreateParameters, build_create_parameters
 from .create_ground_truth import gt_from_hub
+from .creating_summary import format_create_summary
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,8 @@ def create(
     ``locations`` optionally selects a non-empty list of exact, case-sensitive
     location strings. Every requested value must exist in each source file's
     location column for the selected target. Omitting it includes all locations.
+    The returned challenge's ``summary`` reports missing date/location coverage;
+    :meth:`Challenge.save` writes it to ``summary.md`` alongside the task files.
     """
     logger.info("Validating create inputs...")
     parameters = build_create_parameters(
@@ -87,7 +90,10 @@ def _create_challenge(parameters: CreateParameters) -> Challenge:
                 reference_date,
             )
 
-    return Challenge(instructions=None, tasks=tasks, notes=None)
+    return Challenge(
+        instructions=None, tasks=tasks, notes=None,
+        summary=format_create_summary(tasks, parameters),
+    )
 
 
 def _create_from_config(config_path: str) -> None:
@@ -112,6 +118,7 @@ def _create_from_config(config_path: str) -> None:
         challenge.tasks,
         output_dir=output_base,
         include_task_list=True,
+        summary=challenge.summary,
     )
 
 

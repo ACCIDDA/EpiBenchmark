@@ -141,6 +141,25 @@ def _filter_locations(
     return df.loc[available.isin(locations)].copy()
 
 
+def _record_coverage_expectations(
+    df: pd.DataFrame,
+    date_column: str,
+    location_column: str,
+    locations: list[str] | None,
+) -> None:
+    """Retain the source's date/location grid before selection and vintaging."""
+    df.attrs["create_coverage"] = {
+        "dates": sorted(
+            pd.to_datetime(df[date_column], errors="coerce")
+            .dropna().dt.strftime("%Y-%m-%d").unique()
+        ),
+        "locations": (
+            list(dict.fromkeys(locations)) if locations is not None
+            else df[location_column].dropna().unique().tolist()
+        ),
+    }
+
+
 def _resolve_duplicates(
     df: pd.DataFrame,
     vintage_date: str,
@@ -271,6 +290,7 @@ def _checkout_gt_fetch(
             gt, date_column, location_column, observed_column
         )
         gt, target_column_found = _filter_target_if_present(gt, target)
+        _record_coverage_expectations(gt, date_column, location_column, locations)
         gt = _filter_locations(gt, location_column, locations)
         gt = _resolve_duplicates(gt, vintage_date=date, gt_file=gt_file)
 
@@ -301,6 +321,7 @@ def _asof_gt_fetch(
         gt, date_column, location_column, observed_column
     )
     gt, target_column_found = _filter_target_if_present(gt, target)
+    _record_coverage_expectations(gt, date_column, location_column, locations)
     gt = _filter_locations(gt, location_column, locations)
     gt = _resolve_duplicates(gt, vintage_date=cutoff_date, gt_file=gt_file)
     gt = _filter_to_cutoff_target_end_date(gt, cutoff_date, date_column)

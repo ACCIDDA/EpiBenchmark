@@ -62,6 +62,7 @@ Upon a successful `epibench create` run, you can expect a single folder to appea
 output_path/
 └── my-covid-challenge_b7bb9fbf7c/
     ├── task_list.csv
+    ├── summary.md
     └── gt/ 
         ├── 2026-01-01/
         │   └── 20260101_gt.csv
@@ -79,6 +80,8 @@ Where each requested date of reference has its own folder and file within the `g
 
 Each generated ground truth file uses exactly these standardized columns: `target_end_date`, `location`, `target`, and `observed`. The configured source date, location, and observed columns are renamed during output preparation.
 For each task, only observations with `target_end_date` from July 1 of its season through that task's reference date are returned. 
+
+The `summary.md` file informs users of any date-location combinations for which ground truth data could not be found, but these missing combinations do not fail the process.
 
 ## example usage
 
