@@ -164,42 +164,63 @@ def _resolve_duplicates(
     df: pd.DataFrame,
     vintage_date: str,
     gt_file: str,
+    *,
+    date_column: str,
+    location_column: str,
+    observed_column: str,
 ) -> pd.DataFrame:
-    """Resolve duplicates across the complete source schema when an as-of date is available."""
-    if AS_OF_COLUMN not in df.columns:
-        duplicate_rows = df.loc[df.duplicated(keep=False)]
-        if duplicate_rows.empty:
-            return df
+    """Keep one observation per date/location/target, resolving eligible revisions.
 
-        duplicates = duplicate_rows.to_dict(orient="records")
+    Values and source metadata are not observation identifiers. Identical values
+    may collapse; conflicting values need an unambiguous latest ``as_of``.
+    """
+    key_columns = [date_column, location_column]
+    if "target" in df.columns:
+        key_columns.append("target")
+
+    available_df = df.copy()
+    has_as_of = AS_OF_COLUMN in available_df.columns
+    if has_as_of:
+        as_of_values = pd.to_datetime(
+            available_df[AS_OF_COLUMN], errors="coerce", utc=True, format="mixed"
+        )
+        if as_of_values.isna().any():
+            raise ValueError("Ground truth data contains missing or invalid `as_of` values.")
+
+        # Cutoff dates include the whole calendar day, including timestamped revisions.
+        cutoff_exclusive = pd.Timestamp(vintage_date, tz="UTC") + pd.Timedelta(days=1)
+        available_df = available_df.assign(_as_of_sort_value=as_of_values)
+        available_df = available_df[available_df["_as_of_sort_value"] < cutoff_exclusive]
+        if available_df.empty:
+            raise ValueError(
+                f"Ground truth data does not contain an `as_of` vintage on or before {vintage_date}."
+            )
+
+        latest_as_of = available_df.groupby(key_columns, dropna=False)[
+            "_as_of_sort_value"
+        ].transform("max")
+        available_df = available_df[
+            available_df["_as_of_sort_value"].eq(latest_as_of)
+        ]
+
+    value_counts = available_df.groupby(key_columns, dropna=False)[
+        observed_column
+    ].nunique(dropna=False)
+    conflicts = value_counts[value_counts > 1]
+    if not conflicts.empty:
+        reason = (
+            "the latest eligible `as_of` timestamp has conflicting observed values"
+            if has_as_of
+            else "no `as_of` column is present to resolve conflicting observed values"
+        )
         raise ValueError(
-            f"DUPLICATES DETECTED: {duplicates}\n"
-            "COULD NOT RESOLVE DUPLICATES BECAUSE NO `as_of` column is present in "
-            f"{gt_file}."
+            f"Ambiguous ground truth in {gt_file!r} for vintage {vintage_date}: "
+            f"{reason}. Conflicting {key_columns} keys "
+            f"(up to 5 shown): {conflicts.index.tolist()[:5]!r}."
         )
 
-    as_of_values = pd.to_datetime(df[AS_OF_COLUMN], errors="coerce")
-    if as_of_values.isna().any():
-        raise ValueError("Ground truth data contains missing or invalid `as_of` values.")
-
-    cutoff_timestamp = pd.Timestamp(vintage_date)
-    available_df = df.assign(_as_of_sort_value=as_of_values)
-    available_df = available_df[available_df["_as_of_sort_value"] <= cutoff_timestamp]
-    if available_df.empty:
-        raise ValueError(
-            f"Ground truth data does not contain an `as_of` vintage on or before {vintage_date}."
-        )
-
-    duplicate_key_columns = [column for column in df.columns if column != AS_OF_COLUMN]
-
-    # Stable sorting makes an exact as_of tie resolve to the later source-file row.
-    return (
-        available_df.sort_values(by="_as_of_sort_value", kind="stable")
-        .drop_duplicates(
-            subset=duplicate_key_columns,
-            keep="last",
-        )
-        .drop(columns="_as_of_sort_value")
+    return available_df.drop_duplicates(subset=key_columns, keep="last").drop(
+        columns="_as_of_sort_value", errors="ignore"
     )
 
 
@@ -292,7 +313,11 @@ def _checkout_gt_fetch(
         gt, target_column_found = _filter_target_if_present(gt, target)
         _record_coverage_expectations(gt, date_column, location_column, locations)
         gt = _filter_locations(gt, location_column, locations)
-        gt = _resolve_duplicates(gt, vintage_date=date, gt_file=gt_file)
+        gt = _resolve_duplicates(
+            gt, vintage_date=date, gt_file=gt_file,
+            date_column=date_column, location_column=location_column,
+            observed_column=observed_column,
+        )
 
         return (
             _keep_output_columns(gt, date_column, location_column, observed_column, target),
@@ -323,7 +348,11 @@ def _asof_gt_fetch(
     gt, target_column_found = _filter_target_if_present(gt, target)
     _record_coverage_expectations(gt, date_column, location_column, locations)
     gt = _filter_locations(gt, location_column, locations)
-    gt = _resolve_duplicates(gt, vintage_date=cutoff_date, gt_file=gt_file)
+    gt = _resolve_duplicates(
+        gt, vintage_date=cutoff_date, gt_file=gt_file,
+        date_column=date_column, location_column=location_column,
+        observed_column=observed_column,
+    )
     gt = _filter_to_cutoff_target_end_date(gt, cutoff_date, date_column)
 
     if gt.empty:
