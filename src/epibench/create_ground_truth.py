@@ -255,10 +255,12 @@ def _keep_output_columns(
     return standardized_df.loc[:, ["target_end_date", "location", "target", "observed"]]
 
 
-def _filter_to_reference_season(df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
+def _filter_to_reference_season(
+    df: pd.DataFrame, reference_date: str, date_column: str = "target_end_date"
+) -> pd.DataFrame:
     """Keep fetched observations from July 1 through the task's reference date."""
     reference_day = datetime.strptime(reference_date, "%Y-%m-%d").date()
-    target_end_dates = pd.to_datetime(df["target_end_date"], errors="coerce").dt.date
+    target_end_dates = pd.to_datetime(df[date_column], errors="coerce").dt.date
     return df.loc[
         (target_end_dates >= create_season_start(reference_day))
         & (target_end_dates <= reference_day)
@@ -275,6 +277,7 @@ def _checkout_gt_fetch(
     date: str,
     main_branch: str = "main",
     locations: list[str] | None = None,
+    reference_date: str | None = None,
 ) -> tuple[pd.DataFrame, bool]:
     """Fetch configured ground truth from the repository state at ``date``."""
     date_obj = datetime.strptime(date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
@@ -313,6 +316,8 @@ def _checkout_gt_fetch(
         gt, target_column_found = _filter_target_if_present(gt, target)
         _record_coverage_expectations(gt, date_column, location_column, locations)
         gt = _filter_locations(gt, location_column, locations)
+        if reference_date is not None:
+            gt = _filter_to_reference_season(gt, reference_date, date_column)
         gt = _resolve_duplicates(
             gt, vintage_date=date, gt_file=gt_file,
             date_column=date_column, location_column=location_column,
@@ -336,6 +341,7 @@ def _asof_gt_fetch(
     date_column: str | list[str],
     date_s: list[str] | str,
     locations: list[str] | None = None,
+    reference_date: str | None = None,
 ) -> tuple[pd.DataFrame, str, bool]:
     """Fetch configured ground truth and select the newest as-of revision per key."""
     cutoff_date = max(date_s) if isinstance(date_s, list) else date_s
@@ -348,12 +354,14 @@ def _asof_gt_fetch(
     gt, target_column_found = _filter_target_if_present(gt, target)
     _record_coverage_expectations(gt, date_column, location_column, locations)
     gt = _filter_locations(gt, location_column, locations)
+    gt = _filter_to_cutoff_target_end_date(gt, cutoff_date, date_column)
+    if reference_date is not None:
+        gt = _filter_to_reference_season(gt, reference_date, date_column)
     gt = _resolve_duplicates(
         gt, vintage_date=cutoff_date, gt_file=gt_file,
         date_column=date_column, location_column=location_column,
         observed_column=observed_column,
     )
-    gt = _filter_to_cutoff_target_end_date(gt, cutoff_date, date_column)
 
     if gt.empty:
         raise ValueError(
@@ -398,6 +406,7 @@ def gt_from_hub(
                     date_column=date_column,
                     date=cutoff_date,
                     locations=locations,
+                    reference_date=reference_date,
                 )
                 gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
             elif vintaging_method == "as_of":
@@ -410,6 +419,7 @@ def gt_from_hub(
                     date_column=date_column,
                     date_s=cutoff_date,
                     locations=locations,
+                    reference_date=reference_date,
                 )
                 gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
             else:
@@ -425,6 +435,7 @@ def gt_from_hub(
             date_column=date_column,
             date_s=data_cutoff_dates,
             locations=locations,
+            reference_date=reference_dates[-1],
         )
         gt_dict[str(reference_dates[-1])] = _filter_to_reference_season(
             gt, reference_dates[-1]

@@ -21,7 +21,7 @@ The challenge is derived from the 2025–2026 [RSV Forecast Hub](https://github.
 | Horizons | 0, 1, 2, and 3 |
 | Required forecast tasks | 5,200 (26 reference dates × 50 locations × 4 horizons) |
 | Required quantile rows | 26,000 (5 quantiles per forecast task) |
-| Provided ground truth | 73,136 source rows across 26 exported vintages; see revision limitation below |
+| Provided ground truth | 44,650 observations across 26 vintages; one row per vintage/date/location/target key |
 | Source truth file | `target-data/time-series.parquet` |
 | Scoring truth | Latest-revised values reported by the source hub |
 
@@ -37,7 +37,7 @@ epibench fetch epb_rsv_proped_2025-2026_dev --output-path challenges
 
 The library stores all vintages in `gt.parquet`, with columns `target_end_date`, `location`, `target`, `observed`, and `reference_date`. The `reference_date` column identifies the vintage. The fetch command expands these into the per-date Parquet files listed in `task_list.csv`, beneath `gt/<reference_date>/`. Each expanded file contains the four observation columns without `reference_date`.
 
-**Ground-truth revision limitation.** The supplied CSVs contain 73,136 rows covering 44,650 unique vintage/date/location/target combinations. Of these combinations, 17,325 have multiple distinct observed values. The exported CSVs omit the source hub’s `as_of` timestamps. The bundled Parquet preserves every supplied row and its order, including conflicting revisions; it does not select a single observation for each key. Before using these vintages as an unambiguous training series, regenerate them from the source hub by selecting the latest eligible `as_of` per target/date/location, then export the selected observations. An arbitrary choice among exported duplicate rows cannot reliably recover the latest revision.
+**Ground-truth revision selection.** Each vintage uses the repository checkout three days before its reference date. Where the source includes `as_of`, only the latest revision on or before that cutoff is retained for each observation. Identical repeated values are collapsed; conflicting values that cannot be resolved by `as_of` cause generation to fail.
 
 For each forecast reference date, use the corresponding ground-truth vintage and information available by that date. Later vintages may contain revisions or observations unavailable at earlier dates. Historical observations are restricted to the season beginning July 1, 2025, through the reference date; reporting lags can make the latest observed week earlier than the reference date.
 

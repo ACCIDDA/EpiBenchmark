@@ -21,7 +21,7 @@ The challenge is derived from the 2025–2026 [FluSight Forecast Hub](https://gi
 | Horizons | 0, 1, 2, and 3 |
 | Required forecast tasks | 5,712 (28 reference dates × 51 locations × 4 horizons) |
 | Required quantile rows | 28,560 (5 quantiles per forecast task) |
-| Provided ground truth | 47,787 vintaged observations, selected by repository checkout at each reference date |
+| Provided ground truth | 47,787 observations across 28 vintages; one row per vintage/date/location/target key |
 | Source truth file | `target-data/target-ed-visits-prop.csv` |
 | Scoring truth | Latest-revised values reported by the source hub |
 
@@ -36,6 +36,8 @@ epibench fetch epb_flu_proped_2025-2026_dev --output-path challenges
 ```
 
 The library stores all vintages in `gt.parquet`, with columns `target_end_date`, `location`, `target`, `observed`, and `reference_date`. The `reference_date` column identifies the vintage. The fetch command expands these into the per-date Parquet files listed in `task_list.csv`, beneath `gt/<reference_date>/`. Each expanded file contains the four observation columns without `reference_date`.
+
+**Ground-truth revision selection.** Each vintage uses the repository checkout three days before its reference date. Where the source includes `as_of`, only the latest revision on or before that cutoff is retained for each observation. Identical repeated values are collapsed; conflicting values that cannot be resolved by `as_of` cause generation to fail.
 
 For each forecast reference date, use the corresponding ground-truth vintage and information available by that date. Later vintages may contain revisions or observations unavailable at earlier dates. Historical observations are restricted to the season beginning July 1, 2025, through the reference date; reporting lags can make the latest observed week earlier than the reference date.
 
