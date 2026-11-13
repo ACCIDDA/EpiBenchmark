@@ -3,7 +3,7 @@
     "hub_path": "https://github.com/cdcepi/fluSight-forecast-hub",
     "target": "wk inc flu hosp",
     "ground_truth_file": "time-series.csv",
-    "vintaging_method": "checkout",
+    "vintaging_method": "as_of",
     "baseline_model": "FluSight-baseline",
     "reference_dates": ["2025-11-22", "2025-11-29", "2025-12-06", "2025-12-13", "2025-12-20", "2025-12-27", "2026-01-03", "2026-01-10", "2026-01-17", "2026-01-24", "2026-01-31", "2026-02-07", "2026-02-14", "2026-02-21", "2026-02-28", "2026-03-07", "2026-03-14", "2026-03-21", "2026-03-28", "2026-04-04", "2026-04-11", "2026-04-18", "2026-04-25", "2026-05-02", "2026-05-09", "2026-05-16", "2026-05-23", "2026-05-30"],
     "horizons": ["0", "1", "2", "3"],
@@ -14,5 +14,5 @@
     "complete_model_scores_file": "flu25-26_inchosp_complete-model-scores.parquet",
     "sub_challenges": null,
     "date_created": "2026-07-07",
-    "notes": "This challenge has 28 continuous reference dates on a 1-week frequency from 2025-11-22 to 2024-05-30 for the wk inc flu hosp target. There are 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded."
+    "notes": "This challenge has 28 continuous reference dates on a 1-week frequency from 2025-11-22 to 2026-05-30 for the wk inc flu hosp target. There are 52 required locations; the 50 U.S. states, Washington D.C., and the U.S. as a whole. Puerto Rico is excluded."
 }

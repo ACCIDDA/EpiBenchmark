@@ -23,6 +23,8 @@ The challenge is derived from the 2024–2026 [FluSight Forecast Hub](https://gi
 | Provided ground truth | Vintaged (`as_of` each reference date); see `gt/` and `task_list.csv` |
 | Scoring truth | Final (latest-revised) values reported by the source hub |
 
+Ground truth is inherited from the two component challenges: `epb_flu_inchosp_2024-2025_dev` and `epb_flu_inchosp_2025-2026_dev`. 2024–2025 uses historical repository checkouts; 2025–2026 uses source `as_of` timestamps. 
+
 Provide forecasts for every reference date in `task_list.csv`, every required location, and every horizon. Horizon 0 is the reference week; horizons 1, 2, and 3 are the following three weeks. The target end date is the Saturday ending the corresponding US CDC/MMWR epiweek:
 
 ```text
