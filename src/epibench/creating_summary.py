@@ -1,12 +1,9 @@
 """Non-fatal coverage diagnostics for created ground-truth tasks."""
 
-from datetime import date
-
 import pandas as pd
 
 from .challenge import Task
 from .config import CreateParameters
-from .hub_date_utils import create_season_start
 
 
 def _cell(value: object) -> str:
@@ -24,11 +21,9 @@ def format_create_summary(tasks: list[Task], parameters: CreateParameters) -> st
     checked_locations: set[object] = set()
     checked_combinations = 0
     for task in tasks:
-        reference_day = date.fromisoformat(task.name)
-        start = create_season_start(reference_day).isoformat()
-        end = min(task.name, cutoffs[task.name])
+        end = cutoffs[task.name]
         coverage = task.gt_df.attrs["create_coverage"]
-        expected_dates = [day for day in coverage["dates"] if start <= day <= end]
+        expected_dates = [day for day in coverage["dates"] if day <= end]
         expected_locations = sorted(coverage["locations"], key=str)
         checked_locations.update(expected_locations)
         checked_combinations += len(expected_dates) * len(expected_locations)

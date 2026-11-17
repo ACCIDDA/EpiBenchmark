@@ -1,6 +1,7 @@
 """Retrieve and standardize ground truth for the ``epibench create`` pipeline."""
 
 import importlib
+import io
 import logging
 from contextlib import contextmanager
 from datetime import datetime
@@ -8,8 +9,6 @@ from pathlib import Path
 
 import pandas as pd
 import pygit2
-
-from .hub_date_utils import create_season_start
 
 
 logger = logging.getLogger(__name__)
@@ -62,22 +61,24 @@ def _read_ground_truth_file(
     hub_path: Path,
     gt_file: str,
     location_column: str | list[str] | None = None,
+    contents: bytes | None = None,
 ) -> pd.DataFrame:
-    """Read the configured CSV or Parquet ground truth file from a hub checkout."""
+    """Read the configured file, optionally from a historical Git blob."""
     ground_truth_path = _ground_truth_path(hub_path, gt_file)
-    if not ground_truth_path.is_file():
+    if contents is None and not ground_truth_path.is_file():
         raise FileNotFoundError(
             f"Could not find configured ground truth file {gt_file!r} in hub repository {hub_path}."
         )
 
+    source = ground_truth_path if contents is None else io.BytesIO(contents)
     if ground_truth_path.suffix.lower() == ".parquet":
-        return pd.read_parquet(ground_truth_path)
+        return pd.read_parquet(source)
     if ground_truth_path.suffix.lower() == ".csv":
         # Preserve literal CSV location codes (including leading zeros) when
         # exact string selection is requested. Missing fallback names are ignored.
         names = location_column if isinstance(location_column, list) else [location_column]
         converters = {name: str for name in names if name is not None}
-        return pd.read_csv(ground_truth_path, low_memory=False, converters=converters)
+        return pd.read_csv(source, low_memory=False, converters=converters)
 
     raise ValueError("`ground_truth_file` must point to a .csv or .parquet file.")
 
@@ -255,18 +256,6 @@ def _keep_output_columns(
     return standardized_df.loc[:, ["target_end_date", "location", "target", "observed"]]
 
 
-def _filter_to_reference_season(
-    df: pd.DataFrame, reference_date: str, date_column: str = "target_end_date"
-) -> pd.DataFrame:
-    """Keep fetched observations from July 1 through the task's reference date."""
-    reference_day = datetime.strptime(reference_date, "%Y-%m-%d").date()
-    target_end_dates = pd.to_datetime(df[date_column], errors="coerce").dt.date
-    return df.loc[
-        (target_end_dates >= create_season_start(reference_day))
-        & (target_end_dates <= reference_day)
-    ].copy()
-
-
 def _checkout_gt_fetch(
     hub_path: Path,
     gt_file: str,
@@ -275,11 +264,9 @@ def _checkout_gt_fetch(
     location_column: str | list[str],
     date_column: str | list[str],
     date: str,
-    main_branch: str = "main",
     locations: list[str] | None = None,
-    reference_date: str | None = None,
 ) -> tuple[pd.DataFrame, bool]:
-    """Fetch configured ground truth from the repository state at ``date``."""
+    """Read historical ground truth at ``date`` without changing the hub checkout."""
     date_obj = datetime.strptime(date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
     repo = pygit2.Repository(hub_path)
 
@@ -296,40 +283,42 @@ def _checkout_gt_fetch(
     if closest_commit is None:
         raise ValueError(f"No commit found for date {date} in repo {hub_path} history")
 
-    repo.checkout_tree(closest_commit.tree, strategy=pygit2.GIT_CHECKOUT_FORCE)
-    repo.set_head(closest_commit.id)
+    # Validate the configured relative path, then read its historical blob.
+    _ground_truth_path(hub_path, gt_file)
+    try:
+        contents = repo[closest_commit.tree[gt_file].id].data
+    except KeyError as error:
+        raise FileNotFoundError(
+            f"Could not find configured ground truth file {gt_file!r} at commit {closest_commit.id}."
+        ) from error
     logger.info(
-        "Checked out commit on %s (SHA: %s, %s) for repo %s",
+        "Reading snapshot on %s (SHA: %s, %s) for repo %s",
         date,
         closest_commit.id,
         closest_commit.commit_time,
         hub_path,
     )
 
-    try:
-        gt = _read_ground_truth_file(
-            hub_path, gt_file, location_column if locations is not None else None
-        )
-        date_column, location_column, observed_column = _resolve_columns(
-            gt, date_column, location_column, observed_column
-        )
-        gt, target_column_found = _filter_target_if_present(gt, target)
-        _record_coverage_expectations(gt, date_column, location_column, locations)
-        gt = _filter_locations(gt, location_column, locations)
-        if reference_date is not None:
-            gt = _filter_to_reference_season(gt, reference_date, date_column)
-        gt = _resolve_duplicates(
-            gt, vintage_date=date, gt_file=gt_file,
-            date_column=date_column, location_column=location_column,
-            observed_column=observed_column,
-        )
-
-        return (
-            _keep_output_columns(gt, date_column, location_column, observed_column, target),
-            target_column_found,
-        )
-    finally:
-        repo.checkout(f"refs/heads/{main_branch}", strategy=pygit2.GIT_CHECKOUT_FORCE)
+    gt = _read_ground_truth_file(
+        hub_path, gt_file, location_column if locations is not None else None,
+        contents=contents,
+    )
+    date_column, location_column, observed_column = _resolve_columns(
+        gt, date_column, location_column, observed_column
+    )
+    gt, target_column_found = _filter_target_if_present(gt, target)
+    _record_coverage_expectations(gt, date_column, location_column, locations)
+    gt = _filter_locations(gt, location_column, locations)
+    gt = _filter_to_cutoff_target_end_date(gt, date, date_column)
+    gt = _resolve_duplicates(
+        gt, vintage_date=date, gt_file=gt_file,
+        date_column=date_column, location_column=location_column,
+        observed_column=observed_column,
+    )
+    return (
+        _keep_output_columns(gt, date_column, location_column, observed_column, target),
+        target_column_found,
+    )
 
 
 def _asof_gt_fetch(
@@ -341,7 +330,6 @@ def _asof_gt_fetch(
     date_column: str | list[str],
     date_s: list[str] | str,
     locations: list[str] | None = None,
-    reference_date: str | None = None,
 ) -> tuple[pd.DataFrame, str, bool]:
     """Fetch configured ground truth and select the newest as-of revision per key."""
     cutoff_date = max(date_s) if isinstance(date_s, list) else date_s
@@ -355,8 +343,6 @@ def _asof_gt_fetch(
     _record_coverage_expectations(gt, date_column, location_column, locations)
     gt = _filter_locations(gt, location_column, locations)
     gt = _filter_to_cutoff_target_end_date(gt, cutoff_date, date_column)
-    if reference_date is not None:
-        gt = _filter_to_reference_season(gt, reference_date, date_column)
     gt = _resolve_duplicates(
         gt, vintage_date=cutoff_date, gt_file=gt_file,
         date_column=date_column, location_column=location_column,
@@ -388,7 +374,10 @@ def gt_from_hub(
     vintaging_method: str | None,
     locations: list[str] | None = None,
 ) -> dict[str, pd.DataFrame]:
-    """Fetch configured ground truth with the requested vintaging strategy."""
+    """Fetch all available history through each cutoff, with eligible revisions only.
+
+    Reference-date seasons restrict forecast tasks, never the observation history.
+    """
     if len(reference_dates) != len(data_cutoff_dates):
         raise ValueError("`reference_dates` and `data_cutoff_dates` must have the same length.")
 
@@ -406,9 +395,8 @@ def gt_from_hub(
                     date_column=date_column,
                     date=cutoff_date,
                     locations=locations,
-                    reference_date=reference_date,
                 )
-                gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
+                gt_dict[str(reference_date)] = gt
             elif vintaging_method == "as_of":
                 gt, _, target_column_found = _asof_gt_fetch(
                     hub_path=hub_path,
@@ -419,9 +407,8 @@ def gt_from_hub(
                     date_column=date_column,
                     date_s=cutoff_date,
                     locations=locations,
-                    reference_date=reference_date,
                 )
-                gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
+                gt_dict[str(reference_date)] = gt
             else:
                 raise ValueError(f"Unsupported `vintaging_method`: {vintaging_method!r}.")
             target_column_presence.append(target_column_found)
@@ -435,11 +422,8 @@ def gt_from_hub(
             date_column=date_column,
             date_s=data_cutoff_dates,
             locations=locations,
-            reference_date=reference_dates[-1],
         )
-        gt_dict[str(reference_dates[-1])] = _filter_to_reference_season(
-            gt, reference_dates[-1]
-        )
+        gt_dict[str(reference_dates[-1])] = gt
         target_column_presence.append(target_column_found)
 
     if len(set(target_column_presence)) > 1:
