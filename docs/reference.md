@@ -29,15 +29,15 @@ for task in challenge.tasks:
 
 ### `Challenge` and `Task`
 
-`Challenge` is a mutable dataclass with `instructions: str | None`, `tasks: list[Task]`, and `notes: str | None`. Instructions and notes exist for library challenges, and are `None` for results of user `create()` function calls. `Task` is a mutable dataclass with `name: str` (a `YYYY-MM-DD` reference date) and `gt_df: pandas.DataFrame` (ground truth data vintaged for that date).
+`Challenge` is a mutable dataclass with `instructions: str | None`, `tasks: list[Task]`, `notes: str | None`, and `summary: str | None`. Instructions and notes exist for library challenges, and are `None` for results of user `create()` function calls. Created challenges expose a coverage report in `summary`; saving writes it to `summary.md` alongside `gt/`. Library challenges have no coverage summary. `Task` is a mutable dataclass with `name: str` (a `YYYY-MM-DD` reference date) and `gt_df: pandas.DataFrame` (ground truth data vintaged for that date).
 
 #### `Challenge.save(output_path: str | Path | None = None) -> None`
 
-Write each task to `gt/<reference-date>/<YYYYMMDD>_gt.csv` beneath `output_path`, or the current working directory when `output_path` is omitted. The output directory is created if needed. A pre-existing `gt` directory found at the output path will cause a `FileExistsError`. 
+Write each task to `gt/<reference-date>/<YYYYMMDD>_gt.csv` beneath `output_path`, or the current working directory when `output_path` is omitted. Created challenges also write `summary.md`, describing non-fatal coverage gaps using the [source-date grid](commands/epibench-create.md#coverage-summary). The output directory is created if needed. A pre-existing `gt` directory, or `summary.md` when writing a coverage report, causes a `FileExistsError`.
 
 ## Create a challenge
 
-### `create(*, hub_path, target, dates, ground_truth_file, observed_column_name, location_column_name, date_column_name, vintaging, vintaging_method=None, vintaging_offset=None) -> Challenge`
+### `create(*, hub_path, target, dates, ground_truth_file, observed_column_name, location_column_name, date_column_name, vintaging, vintaging_method=None, vintaging_offset=None, locations=None) -> Challenge`
 
 Build ground-truth tasks from a hub and return them in memory. Using this functionality, users may specify their own retrievals of vintaged ground truth data. `create()` parameters are all keyword arguments.
 
@@ -49,6 +49,7 @@ Build ground-truth tasks from a hub and return them in memory. Using this functi
 | `ground_truth_file` | `str` | Path to the ground truth data file you would like ground truth data to be pulled from. Must be relative to the root directory of the specified hub. |
 | `observed_column_name` | `str \| list[str]` | Source column containing observed values, or an ordered list of alternative names. |
 | `location_column_name` | `str \| list[str]` | Source column containing location values, or an ordered list of alternative names. |
+| `locations` | `list[str] \| None` | Optional non-empty list of exact, case-sensitive values from `location_column_name`. Every value must occur for the selected target in each source file before date/vintage filtering. Defaults to all source locations. CSV codes retain leading zeros when selection is requested; Parquet values must match the supplied strings. |
 | `date_column_name` | `str \| list[str]` | Source column containing target end dates, or an ordered list of alternative names. |
 | `vintaging` | `bool` | Whether or not to vintage ground truth to each reference date provided. Setting to `False` will retrieve most updated ground truth data to cover your date span. |
 | `vintaging_method` | `"as_of" \| "checkout" \| None` | Required when `vintaging=True`. |
@@ -56,25 +57,30 @@ Build ground-truth tasks from a hub and return them in memory. Using this functi
 
 For each of the three column-name arguments, pass a non-empty string or a non-empty list of non-empty strings. EpiBench selects the first name present in each file, independently for each field and historical checkout. Matches are exact and case-sensitive. If multiple names exist, the first takes precedence; missing or invalid values in that column do not trigger a fallback or merging with another column. The selected date, location, and observed columns must be distinct. If no candidate exists, a `ValueError` lists the attempted names and available columns. Fallbacks work with CSV and Parquet, both vintaging methods, and unvintaged runs.
 
+`location_column_name` names a column; `locations` selects values within it. Pass `locations=None` to include all locations, or use quoted identifiers such as `["01", "06", "US"]`. An empty list, non-string identifier, or requested location absent from a source file raises `ValueError`. Selection does not require an observation for every date: those gaps appear in the returned challenge's `summary`. See [location selection](commands/epibench-create.md#location-selection) for details.
+
 Dates must be readable into `YYYY-MM-DD` format, no later than the current date, and be valid reference dates for your hub and season. List dates are deduplicated and sorted. A create run must stay within one July 1–June 30 season. For known hubs, the bundled date library also restricts reference dates to the hub's recorded weekly submission window. Each task contains only ground truth with `target_end_date` from that season's July 1 through its reference date, inclusive. Call `Challenge.save()` to save the resulting ground truth data files to your machine.
 
 ```python
 challenge = epibench.create(
     hub_path="/path/to/hub",
-    target="wk inc flu hosp",
-    dates=["2024-11-23", "2024-11-30"],
-    ground_truth_file="target-data/time-series.csv",
-    observed_column_name="value",
+    target="wk inc rsv prop ed visits",
+    dates=["2026-01-17", "2026-01-24"],
+    ground_truth_file="target-data/time-series.parquet",
+    observed_column_name="observation",
     location_column_name="location",
+    locations=["01", "06", "US"],
     date_column_name=["target_end_date", "date"],
     vintaging=True,
-    vintaging_method="as_of",
+    vintaging_method="checkout",
     vintaging_offset=-3
 )
 challenge.save("results/ground-truth")
 ```
 
 Be sure to use a ground-truth path and column names that match your hub. If using `vintaging_method="checkout"`, be certain that your ground truth data file exists across your entire span of dates.
+
+For the full bundled RSV prop ED challenge, use `epibench.fetch_challenge("epb_rsv_proped_2025-2026_dev")`; the example above creates a custom subset for three locations and two dates.
 
 ## Score forecasts
 

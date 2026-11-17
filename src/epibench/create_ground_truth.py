@@ -58,7 +58,11 @@ def _ground_truth_path(hub_path: Path, gt_file: str) -> Path:
     return resolved_gt_path
 
 
-def _read_ground_truth_file(hub_path: Path, gt_file: str) -> pd.DataFrame:
+def _read_ground_truth_file(
+    hub_path: Path,
+    gt_file: str,
+    location_column: str | list[str] | None = None,
+) -> pd.DataFrame:
     """Read the configured CSV or Parquet ground truth file from a hub checkout."""
     ground_truth_path = _ground_truth_path(hub_path, gt_file)
     if not ground_truth_path.is_file():
@@ -69,7 +73,11 @@ def _read_ground_truth_file(hub_path: Path, gt_file: str) -> pd.DataFrame:
     if ground_truth_path.suffix.lower() == ".parquet":
         return pd.read_parquet(ground_truth_path)
     if ground_truth_path.suffix.lower() == ".csv":
-        return pd.read_csv(ground_truth_path, low_memory=False)
+        # Preserve literal CSV location codes (including leading zeros) when
+        # exact string selection is requested. Missing fallback names are ignored.
+        names = location_column if isinstance(location_column, list) else [location_column]
+        converters = {name: str for name in names if name is not None}
+        return pd.read_csv(ground_truth_path, low_memory=False, converters=converters)
 
     raise ValueError("`ground_truth_file` must point to a .csv or .parquet file.")
 
@@ -115,46 +123,104 @@ def _filter_target_if_present(df: pd.DataFrame, target: str) -> tuple[pd.DataFra
     return filtered_df, True
 
 
+def _filter_locations(
+    df: pd.DataFrame, location_column: str, locations: list[str] | None
+) -> pd.DataFrame:
+    """Select exact location values, rejecting requests absent from the source."""
+    if locations is None:
+        return df
+    available = df[location_column]
+    requested = pd.Series(list(dict.fromkeys(locations)))
+    missing = requested.loc[~requested.isin(available)].tolist()
+    if missing:
+        raise ValueError(
+            f"Could not find requested `locations` {missing!r} in ground truth "
+            f"column {location_column!r} for the selected target. "
+            "Location values must match exactly."
+        )
+    return df.loc[available.isin(locations)].copy()
+
+
+def _record_coverage_expectations(
+    df: pd.DataFrame,
+    date_column: str,
+    location_column: str,
+    locations: list[str] | None,
+) -> None:
+    """Retain the source's date/location grid before selection and vintaging."""
+    df.attrs["create_coverage"] = {
+        "dates": sorted(
+            pd.to_datetime(df[date_column], errors="coerce")
+            .dropna().dt.strftime("%Y-%m-%d").unique()
+        ),
+        "locations": (
+            list(dict.fromkeys(locations)) if locations is not None
+            else df[location_column].dropna().unique().tolist()
+        ),
+    }
+
+
 def _resolve_duplicates(
     df: pd.DataFrame,
     vintage_date: str,
     gt_file: str,
+    *,
+    date_column: str,
+    location_column: str,
+    observed_column: str,
 ) -> pd.DataFrame:
-    """Resolve duplicates across the complete source schema when an as-of date is available."""
-    if AS_OF_COLUMN not in df.columns:
-        duplicate_rows = df.loc[df.duplicated(keep=False)]
-        if duplicate_rows.empty:
-            return df
+    """Keep one observation per date/location/target, resolving eligible revisions.
 
-        duplicates = duplicate_rows.to_dict(orient="records")
+    Values and source metadata are not observation identifiers. Identical values
+    may collapse; conflicting values need an unambiguous latest ``as_of``.
+    """
+    key_columns = [date_column, location_column]
+    if "target" in df.columns:
+        key_columns.append("target")
+
+    available_df = df.copy()
+    has_as_of = AS_OF_COLUMN in available_df.columns
+    if has_as_of:
+        as_of_values = pd.to_datetime(
+            available_df[AS_OF_COLUMN], errors="coerce", utc=True, format="mixed"
+        )
+        if as_of_values.isna().any():
+            raise ValueError("Ground truth data contains missing or invalid `as_of` values.")
+
+        # Cutoff dates include the whole calendar day, including timestamped revisions.
+        cutoff_exclusive = pd.Timestamp(vintage_date, tz="UTC") + pd.Timedelta(days=1)
+        available_df = available_df.assign(_as_of_sort_value=as_of_values)
+        available_df = available_df[available_df["_as_of_sort_value"] < cutoff_exclusive]
+        if available_df.empty:
+            raise ValueError(
+                f"Ground truth data does not contain an `as_of` vintage on or before {vintage_date}."
+            )
+
+        latest_as_of = available_df.groupby(key_columns, dropna=False)[
+            "_as_of_sort_value"
+        ].transform("max")
+        available_df = available_df[
+            available_df["_as_of_sort_value"].eq(latest_as_of)
+        ]
+
+    value_counts = available_df.groupby(key_columns, dropna=False)[
+        observed_column
+    ].nunique(dropna=False)
+    conflicts = value_counts[value_counts > 1]
+    if not conflicts.empty:
+        reason = (
+            "the latest eligible `as_of` timestamp has conflicting observed values"
+            if has_as_of
+            else "no `as_of` column is present to resolve conflicting observed values"
+        )
         raise ValueError(
-            f"DUPLICATES DETECTED: {duplicates}\n"
-            "COULD NOT RESOLVE DUPLICATES BECAUSE NO `as_of` column is present in "
-            f"{gt_file}."
+            f"Ambiguous ground truth in {gt_file!r} for vintage {vintage_date}: "
+            f"{reason}. Conflicting {key_columns} keys "
+            f"(up to 5 shown): {conflicts.index.tolist()[:5]!r}."
         )
 
-    as_of_values = pd.to_datetime(df[AS_OF_COLUMN], errors="coerce")
-    if as_of_values.isna().any():
-        raise ValueError("Ground truth data contains missing or invalid `as_of` values.")
-
-    cutoff_timestamp = pd.Timestamp(vintage_date)
-    available_df = df.assign(_as_of_sort_value=as_of_values)
-    available_df = available_df[available_df["_as_of_sort_value"] <= cutoff_timestamp]
-    if available_df.empty:
-        raise ValueError(
-            f"Ground truth data does not contain an `as_of` vintage on or before {vintage_date}."
-        )
-
-    duplicate_key_columns = [column for column in df.columns if column != AS_OF_COLUMN]
-
-    # Stable sorting makes an exact as_of tie resolve to the later source-file row.
-    return (
-        available_df.sort_values(by="_as_of_sort_value", kind="stable")
-        .drop_duplicates(
-            subset=duplicate_key_columns,
-            keep="last",
-        )
-        .drop(columns="_as_of_sort_value")
+    return available_df.drop_duplicates(subset=key_columns, keep="last").drop(
+        columns="_as_of_sort_value", errors="ignore"
     )
 
 
@@ -189,10 +255,12 @@ def _keep_output_columns(
     return standardized_df.loc[:, ["target_end_date", "location", "target", "observed"]]
 
 
-def _filter_to_reference_season(df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
+def _filter_to_reference_season(
+    df: pd.DataFrame, reference_date: str, date_column: str = "target_end_date"
+) -> pd.DataFrame:
     """Keep fetched observations from July 1 through the task's reference date."""
     reference_day = datetime.strptime(reference_date, "%Y-%m-%d").date()
-    target_end_dates = pd.to_datetime(df["target_end_date"], errors="coerce").dt.date
+    target_end_dates = pd.to_datetime(df[date_column], errors="coerce").dt.date
     return df.loc[
         (target_end_dates >= create_season_start(reference_day))
         & (target_end_dates <= reference_day)
@@ -208,6 +276,8 @@ def _checkout_gt_fetch(
     date_column: str | list[str],
     date: str,
     main_branch: str = "main",
+    locations: list[str] | None = None,
+    reference_date: str | None = None,
 ) -> tuple[pd.DataFrame, bool]:
     """Fetch configured ground truth from the repository state at ``date``."""
     date_obj = datetime.strptime(date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
@@ -237,12 +307,22 @@ def _checkout_gt_fetch(
     )
 
     try:
-        gt = _read_ground_truth_file(hub_path, gt_file)
+        gt = _read_ground_truth_file(
+            hub_path, gt_file, location_column if locations is not None else None
+        )
         date_column, location_column, observed_column = _resolve_columns(
             gt, date_column, location_column, observed_column
         )
         gt, target_column_found = _filter_target_if_present(gt, target)
-        gt = _resolve_duplicates(gt, vintage_date=date, gt_file=gt_file)
+        _record_coverage_expectations(gt, date_column, location_column, locations)
+        gt = _filter_locations(gt, location_column, locations)
+        if reference_date is not None:
+            gt = _filter_to_reference_season(gt, reference_date, date_column)
+        gt = _resolve_duplicates(
+            gt, vintage_date=date, gt_file=gt_file,
+            date_column=date_column, location_column=location_column,
+            observed_column=observed_column,
+        )
 
         return (
             _keep_output_columns(gt, date_column, location_column, observed_column, target),
@@ -260,16 +340,28 @@ def _asof_gt_fetch(
     location_column: str | list[str],
     date_column: str | list[str],
     date_s: list[str] | str,
+    locations: list[str] | None = None,
+    reference_date: str | None = None,
 ) -> tuple[pd.DataFrame, str, bool]:
     """Fetch configured ground truth and select the newest as-of revision per key."""
     cutoff_date = max(date_s) if isinstance(date_s, list) else date_s
-    gt = _read_ground_truth_file(hub_path, gt_file)
+    gt = _read_ground_truth_file(
+        hub_path, gt_file, location_column if locations is not None else None
+    )
     date_column, location_column, observed_column = _resolve_columns(
         gt, date_column, location_column, observed_column
     )
     gt, target_column_found = _filter_target_if_present(gt, target)
-    gt = _resolve_duplicates(gt, vintage_date=cutoff_date, gt_file=gt_file)
+    _record_coverage_expectations(gt, date_column, location_column, locations)
+    gt = _filter_locations(gt, location_column, locations)
     gt = _filter_to_cutoff_target_end_date(gt, cutoff_date, date_column)
+    if reference_date is not None:
+        gt = _filter_to_reference_season(gt, reference_date, date_column)
+    gt = _resolve_duplicates(
+        gt, vintage_date=cutoff_date, gt_file=gt_file,
+        date_column=date_column, location_column=location_column,
+        observed_column=observed_column,
+    )
 
     if gt.empty:
         raise ValueError(
@@ -294,6 +386,7 @@ def gt_from_hub(
     data_cutoff_dates: list[str],
     vintaging: bool,
     vintaging_method: str | None,
+    locations: list[str] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Fetch configured ground truth with the requested vintaging strategy."""
     if len(reference_dates) != len(data_cutoff_dates):
@@ -312,6 +405,8 @@ def gt_from_hub(
                     location_column=location_column,
                     date_column=date_column,
                     date=cutoff_date,
+                    locations=locations,
+                    reference_date=reference_date,
                 )
                 gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
             elif vintaging_method == "as_of":
@@ -323,6 +418,8 @@ def gt_from_hub(
                     location_column=location_column,
                     date_column=date_column,
                     date_s=cutoff_date,
+                    locations=locations,
+                    reference_date=reference_date,
                 )
                 gt_dict[str(reference_date)] = _filter_to_reference_season(gt, reference_date)
             else:
@@ -337,6 +434,8 @@ def gt_from_hub(
             location_column=location_column,
             date_column=date_column,
             date_s=data_cutoff_dates,
+            locations=locations,
+            reference_date=reference_dates[-1],
         )
         gt_dict[str(reference_dates[-1])] = _filter_to_reference_season(
             gt, reference_dates[-1]

@@ -12,6 +12,7 @@ The configuration file for an `epibench create` run takes in the following keys:
 * `ground_truth_file`: a relative, hub-root path to the CSV or Parquet ground truth file. Absolute paths and paths outside the hub are rejected.
 * `observed_column_name`: the source column containing observed values, as a string or an ordered list of alternative names.
 * `location_column_name`: the source column containing locations, as a string or an ordered list of alternative names.
+* `locations`: optional non-empty list of strings selecting location values (use locations as they appear in the target data). Omit it or use `null` to include all locations.
 * `date_column_name`: the source column containing target end dates, as a string or an ordered list of alternative names.
 * `dates`: which dates of reference you want to fetch ground truth data for (`YYYY-MM-DD`)
     * this can be passes as a list of individually-specified dates, 
@@ -43,24 +44,21 @@ For each file read, EpiBench selects the first listed name that exists for each 
 
 Names must match exactly, including capitalization. Each setting must be a non-empty string or a non-empty list of non-empty strings. If multiple candidates exist, the first wins; values from different columns are not combined. A column with missing or invalid data does not trigger a fallback. The three fields must resolve to distinct source columns. If no candidate exists, the run fails with an error listing the attempted names and available columns.
 
-Existing string settings continue to work. List order sets priority and affects the output folder's challenge hash.
-
 ## Source-file Requirements
 
 Every source file read during the run must contain at least one configured candidate for each of the observed, location, and date fields. The `as_of` method also requires an `as_of` column.
 
 The source `target` column is optional. If it is present, EpiBench filters the file to the configured target and preserves that column. If it is absent from every file, EpiBench adds a `target` column with the configured target value and logs a warning that it could not verify the target. A run fails if some vintages have a `target` column and others do not.
 
-When multiple revisions share a date and location, EpiBench retains the latest `as_of` version available at the cutoff. If `target` is present, it is also part of this revision key. When no `as_of` column exists, duplicate revision keys are rejected because there is no reliable way to select a vintage.
-
 ## Output
 
-Upon a successful `epibench create` run, you can expect a single folder to appear at your `--output-path`. The folder will be named by whatever string you set as `challenge_name` in the configuration file, followed by a ten-character hash that is both unique to your specifications and reproducible. Within the folder, you would find the following nested structure: 
+Upon a successful `epibench create` run, a single folder is written beneath the configuration's `output_path`. The folder is named by `challenge_name`, followed by a ten-character hash of the create parameters. Within the folder, you will find the following nested structure:
 
 ```
 output_path/
 └── my-covid-challenge_b7bb9fbf7c/
     ├── task_list.csv
+    ├── summary.md
     └── gt/ 
         ├── 2026-01-01/
         │   └── 20260101_gt.csv
@@ -78,6 +76,10 @@ Where each requested date of reference has its own folder and file within the `g
 
 Each generated ground truth file uses exactly these standardized columns: `target_end_date`, `location`, `target`, and `observed`. The configured source date, location, and observed columns are renamed during output preparation.
 For each task, only observations with `target_end_date` from July 1 of its season through that task's reference date are returned. 
+
+## Coverage summary
+
+`summary.md` reports absent date–location rows and missing observed values without filling or dropping them. These gaps do not fail the run. The checked grid uses dates present in the target's source file and the selected locations, restricted to the task's season and cutoff. However, logic will not infer dates that are absent from the source altogether (i.e., entirely missing dates will fail processing immediately).
 
 ## example usage
 

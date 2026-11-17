@@ -4,6 +4,8 @@ EpiBenchmark ships with a library of predefined **challenges** (challenges have 
 
 Click a challenge to expand its definition.
 
+## Incident hospital admissions
+
 ??? note "epb_flu_inchosp_2023-2024_dev"
     | Field | Value |
     | --- | --- |
@@ -40,7 +42,7 @@ Click a challenge to expand its definition.
     | Baseline model | `FluSight-baseline` |
     | Scorecard | total wis, 50_coverage, 95_coverage |
 
-    * **Note**: `epb_flu_inchosp_2025-2025_dev` has a 1-week date discontinuity at `2025-01-25` due to a US government shutdown.
+    * **Note**: `epb_flu_inchosp_2024-2025_dev` has a 1-week date discontinuity at `2025-01-25` due to a US government shutdown.
 
 ??? note "epb_flu_inchosp_2024-2026_dev"
     | Field | Value |
@@ -114,3 +116,59 @@ Click a challenge to expand its definition.
     | Scorecard | total wis, 50_coverage, 95_coverage |
 
     * **Note**: Reference dates exclude the seven weeks from `2025-10-04` through `2025-11-15` due to a U.S. government shutdown. Puerto Rico is excluded.
+
+## Proportion of ED visits
+
+??? note "epb_flu_proped_2025-2026_dev"
+    | Field | Value |
+    | --- | --- |
+    | Hub | `flusight-forecast-hub` |
+    | Target | `wk inc flu prop ed visits` |
+    | Reference dates | 2025-11-22 → 2026-05-30 (28 continuous weekly dates) |
+    | Forecast target end dates | 2025-11-22 → 2026-06-20 |
+    | Horizons | 0, 1, 2, 3 |
+    | Quantiles | 0.025, 0.25, 0.5, 0.75, 0.975 |
+    | Locations | 49 U.S. states + Washington D.C. + U.S. (51 total); Missouri and Puerto Rico excluded |
+    | Required forecast units | 5,712 (28 reference dates × 51 locations × 4 horizons) |
+    | Required quantile rows | 28,560 |
+    | Baseline model | `FluSight-baseline` |
+    | Bundled comparison models | `FluSight-ensemble`, `NAU-vulPES` |
+    | Ground-truth source | `target-data/target-ed-visits-prop.csv` |
+    | Vintaging | Repository checkout three days before each reference date |
+    | Scorecard | total wis, 50_coverage, 95_coverage |
+
+??? note "epb_rsv_proped_2025-2026_dev"
+    | Field | Value |
+    | --- | --- |
+    | Hub | `rsv-forecast-hub` |
+    | Target | `wk inc rsv prop ed visits` |
+    | Reference dates | 2025-11-29 → 2026-05-30 (26 dates; 2025-12-27 excluded) |
+    | Forecast target end dates | 2025-11-29 → 2026-06-20 |
+    | Horizons | 0, 1, 2, 3 |
+    | Quantiles | 0.025, 0.25, 0.5, 0.75, 0.975 |
+    | Locations | 48 U.S. states + Washington D.C. + U.S. (50 total); Missouri, Wyoming, and Puerto Rico excluded |
+    | Required forecast units | 5,200 (26 reference dates × 50 locations × 4 horizons) |
+    | Required quantile rows | 26,000 |
+    | Baseline model | `RSVHub-baseline` |
+    | Bundled comparison models | `RSVHub-ensemble`, `UGA_flucast-INFLAenza` |
+    | Ground-truth source | `target-data/time-series.parquet` |
+    | Vintaging | Repository checkout three days before each reference date, then latest eligible `as_of` per observation |
+    | Scorecard | total wis, 50_coverage, 95_coverage |
+
+??? note "epb_covid_proped_2025-2026_dev"
+    | Field | Value |
+    | --- | --- |
+    | Hub | `covid19-forecast-hub` |
+    | Target | `wk inc covid prop ed visits` |
+    | Reference dates | 2026-01-17 → 2026-06-27 (24 continuous weekly dates) |
+    | Forecast target end dates | 2026-01-17 → 2026-07-18 |
+    | Horizons | 0, 1, 2, 3 |
+    | Quantiles | 0.025, 0.25, 0.5, 0.75, 0.975 |
+    | Locations | 48 U.S. states + Washington D.C. + U.S. (50 total); Missouri, Wyoming, and Puerto Rico excluded |
+    | Required forecast units | 4,800 (24 reference dates × 50 locations × 4 horizons) |
+    | Required quantile rows | 24,000 |
+    | Baseline model | `CovidHub-baseline` |
+    | Bundled comparison models | `CMU-TimeSeries`, `CovidHub-ensemble` |
+    | Ground-truth source | `target-data/time-series.parquet` |
+    | Vintaging | Repository checkout three days before each reference date, then latest eligible `as_of` per observation |
+    | Scorecard | total wis, 50_coverage, 95_coverage |
