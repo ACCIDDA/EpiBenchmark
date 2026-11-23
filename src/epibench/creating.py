@@ -12,7 +12,7 @@ import polars as pl
 
 from .challenge import Challenge, Task, _save_tasks
 from .config import Config, CreateParameters, build_create_parameters
-from .create_ground_truth import gt_from_hub
+from .create_ground_truth import CoverageExpectations, gt_from_hub
 from .creating_summary import format_create_summary
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,7 @@ def create(
 def _create_challenge(parameters: CreateParameters) -> Challenge:
     """Create in-memory tasks from validated, normalized parameters."""
     logger.info("Fetching ground-truth data from hub...")
+    coverage_by_date: dict[str, CoverageExpectations] = {}
     ground_truth_by_date = gt_from_hub(
         hub_path=parameters.hub_path,
         target=parameters.target,
@@ -77,6 +78,7 @@ def _create_challenge(parameters: CreateParameters) -> Challenge:
         vintaging=parameters.vintaging,
         vintaging_method=parameters.vintaging_method,
         locations=parameters.locations,
+        coverage_by_date=coverage_by_date,
     )
 
     tasks: list[Task] = []
@@ -92,7 +94,7 @@ def _create_challenge(parameters: CreateParameters) -> Challenge:
 
     return Challenge(
         instructions=None, tasks=tasks, notes=None,
-        summary=format_create_summary(tasks, parameters),
+        summary=format_create_summary(tasks, parameters, coverage_by_date),
     )
 
 

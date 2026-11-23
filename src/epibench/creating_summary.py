@@ -1,9 +1,12 @@
 """Non-fatal coverage diagnostics for created ground-truth tasks."""
 
-import pandas as pd
+from collections.abc import Mapping
+
+import polars as pl
 
 from .challenge import Task
 from .config import CreateParameters
+from .create_ground_truth import CoverageExpectations
 
 
 def _cell(value: object) -> str:
@@ -13,7 +16,11 @@ def _cell(value: object) -> str:
     )
 
 
-def format_create_summary(tasks: list[Task], parameters: CreateParameters) -> str:
+def format_create_summary(
+    tasks: list[Task],
+    parameters: CreateParameters,
+    coverage_by_date: Mapping[str, CoverageExpectations],
+) -> str:
     """Report absent rows and missing observed values without changing tasks."""
     cutoffs = dict(zip(parameters.dates, parameters.gt_cutoff_dates))
     sections = []
@@ -22,16 +29,20 @@ def format_create_summary(tasks: list[Task], parameters: CreateParameters) -> st
     checked_combinations = 0
     for task in tasks:
         end = cutoffs[task.name]
-        coverage = task.gt_df.attrs["create_coverage"]
-        expected_dates = [day for day in coverage["dates"] if day <= end]
-        expected_locations = sorted(coverage["locations"], key=str)
+        coverage = coverage_by_date[task.name]
+        expected_dates = [day for day in coverage.dates if day <= end]
+        expected_locations = sorted(coverage.locations, key=str)
         checked_locations.update(expected_locations)
         checked_combinations += len(expected_dates) * len(expected_locations)
-        data = task.gt_df
-        days = pd.to_datetime(data["target_end_date"], errors="coerce").dt.strftime("%Y-%m-%d")
-        present = set(zip(days, data["location"]))
-        valid = data["observed"].notna()
-        observed = set(zip(days[valid], data.loc[valid, "location"]))
+        rows = task.gt_df.select(
+            pl.col("target_end_date").dt.to_string("%Y-%m-%d"), "location", "observed"
+        )
+        present = set()
+        observed = set()
+        for day, location, value in rows.iter_rows():
+            present.add((day, location))
+            if value is not None:
+                observed.add((day, location))
         missing = [
             (day, location, "No row" if (day, location) not in present else "Missing observed value")
             for day in expected_dates for location in expected_locations
