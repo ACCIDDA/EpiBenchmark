@@ -1,6 +1,7 @@
 """Validation helpers for forecast quantile inputs used in scoring."""
 
 import logging
+from string import whitespace
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import polars as pl
@@ -29,6 +30,7 @@ def _prepare_quantile_columns(forecast_df: pl.DataFrame) -> pl.DataFrame:
         .with_columns(
             pl.col("quantile_level").fill_null("<missing>").alias("quantile_level_raw"),
             pl.col("quantile_level")
+            .str.strip_chars(whitespace)
             .cast(pl.Float64, strict=False)
             .fill_nan(None)
             .alias("quantile_level_numeric"),

@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Sequence
+from string import whitespace
 from typing import Any
 
 import numpy as np
@@ -94,13 +95,17 @@ def _prepare_forecasts(data: pl.DataFrame) -> pl.DataFrame:
         data.select(pl.any_horizontal(pl.all().is_null())).to_series().to_numpy()
     )
     for column in REQUIRED_COLUMNS:
-        if forecast.schema[column] == pl.Boolean:
+        dtype = forecast.schema[column]
+        if dtype == pl.Boolean:
             raise ForecastValidationError(
                 f"Forecast column '{column}' must be numeric."
             )
+        values = pl.col(column)
+        if dtype == pl.String:
+            values = values.str.strip_chars(whitespace)
         try:
             forecast = forecast.with_columns(
-                pl.col(column).cast(pl.Float64).fill_nan(None)
+                values.cast(pl.Float64).fill_nan(None)
             )
         except (pl.exceptions.PolarsError, TypeError, ValueError) as error:
             raise ForecastValidationError(
