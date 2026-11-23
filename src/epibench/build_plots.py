@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize, TwoSlopeNorm
 import numpy as np
-import pandas as pd
+import polars as pl
+
+from .dataframes import to_polars, normalize_dates, read_csv
 import logging
 
 logger = logging.getLogger(__name__)
@@ -42,92 +45,64 @@ COMPONENT_COLORS = {
 }
 
 
-def load_scores(score_file_path: Path) -> pd.DataFrame:
+def load_scores(score_file_path: Path) -> pl.DataFrame:
     """
     Read a score CSV and pass it through the shared plotting validation.
     """
     return validate_scores(read_scores(score_file_path))
 
 
-def read_scores(score_file_path: Path) -> pd.DataFrame:
+def read_scores(score_file_path: Path) -> pl.DataFrame:
     """
     Read a score CSV.
     Specifically preserves location identifiers as strings.
     """
-    return pd.read_csv(score_file_path, dtype={"location": str})
+    return read_csv(score_file_path, string_columns=("location",))
 
 
-def validate_scores(score_df: pd.DataFrame) -> pd.DataFrame:
-    """Validate and normalize an in-memory scoring DataFrame for plotting."""
-    if not isinstance(score_df, pd.DataFrame):
-        raise TypeError(
-            f"`score_file` must be a pandas DataFrame. Received: {type(score_df)}"
-        )
-
-    score_df = score_df.copy()
-    score_df.columns = [column.lstrip("\ufeff").strip() for column in score_df.columns]
-
+def validate_scores(score_df: Any) -> pl.DataFrame:
+    """Validate and normalize any supported frame for plotting."""
+    score_df = to_polars(score_df)
+    score_df = score_df.rename(
+        {c: c.lstrip("\ufeff").strip() for c in score_df.columns}
+    )
     missing_columns = REQUIRED_COLUMNS - set(score_df.columns)
     if missing_columns:
         raise KeyError(
-            "Score file is missing required columns for plotting: "
-            f"{sorted(missing_columns)}"
+            f"Score file is missing required columns for plotting: {sorted(missing_columns)}"
         )
-
-    score_df = score_df.loc[:, [column for column in score_df.columns if column in REQUIRED_COLUMNS]]
-
-    score_df["model"] = score_df["model"].astype(str).str.strip()
-    score_df["location"] = score_df["location"].astype(str).str.strip()
-    score_df["reference_date"] = pd.to_datetime(
-        score_df["reference_date"], format="mixed", errors="raise"
+    score_df = score_df.select([c for c in score_df.columns if c in REQUIRED_COLUMNS])
+    score_df = normalize_dates(score_df, ["reference_date", "target_end_date"])
+    score_df = score_df.with_columns(
+        pl.col("model", "location").cast(pl.String).str.strip_chars(),
+        pl.col("horizon").cast(pl.Float64).cast(pl.Int64),
+        pl.col("wis", "overprediction", "underprediction", "dispersion", "rwis")
+        .cast(pl.Float64, strict=False)
+        .fill_nan(None),
     )
-    score_df["target_end_date"] = pd.to_datetime(
-        score_df["target_end_date"], format="mixed", errors="raise"
-    )
-    score_df["horizon"] = pd.to_numeric(score_df["horizon"], errors="raise").astype(int)
-
-    numeric_columns = [
-        "wis",
-        "overprediction",
-        "underprediction",
-        "dispersion",
-        "rwis",
-    ]
-    for column in numeric_columns:
-        score_df[column] = pd.to_numeric(score_df[column], errors="coerce")
-
-    missing_values = score_df[
-        [
-            "model",
-            "reference_date",
-            "target_end_date",
-            "location",
-            "horizon",
-            "wis",
-            "overprediction",
-            "underprediction",
-            "dispersion",
-        ]
-    ].isna().sum()
-    invalid_required = missing_values[missing_values > 0]
-    if not invalid_required.empty:
+    required = [c for c in score_df.columns if c != "rwis"]
+    missing_values = score_df.select(required).null_count().row(0, named=True)
+    invalid_required = {c: n for c, n in missing_values.items() if n}
+    if invalid_required:
         raise ValueError(
-            "Score file contains missing values in required plotting columns: "
-            f"{invalid_required.to_dict()}"
+            f"Score file contains missing values in required plotting columns: {invalid_required}"
         )
-
-    duplicate_count = score_df.duplicated(UNIQUE_KEY_COLUMNS).sum()
+    duplicate_count = (
+        score_df.height - score_df.unique(subset=UNIQUE_KEY_COLUMNS).height
+    )
     if duplicate_count:
         raise ValueError(
             "Score file contains duplicate forecast-score rows for composite key "
             f"{UNIQUE_KEY_COLUMNS}. Duplicate row count: {duplicate_count}."
         )
     logger.info("Success ✅")
-    return score_df.sort_values(["reference_date", "target_end_date", "location", "model", "horizon"])
+    return score_df.sort(
+        ["reference_date", "target_end_date", "location", "model", "horizon"],
+        maintain_order=True,
+    )
 
 
-# assemble the PDF
-def build_summary_figures(score_df: pd.DataFrame) -> list[plt.Figure]:
+def build_summary_figures(score_df: pl.DataFrame) -> list[plt.Figure]:
     """
     Build the three PDF figures from validated score data.
     """
@@ -138,16 +113,14 @@ def build_summary_figures(score_df: pd.DataFrame) -> list[plt.Figure]:
     ]
 
 
-def _build_wis_components_figure(score_df: pd.DataFrame) -> plt.Figure:
+def _build_wis_components_figure(score_df: pl.DataFrame) -> plt.Figure:
     """
     Plot total WIS split into its additive components for each model.
     """
     component_df = (
-        score_df.groupby("model", as_index=False)[
-            ["wis", "underprediction", "dispersion", "overprediction"]
-        ]
-        .sum()
-        .sort_values("wis", ascending=True)
+        score_df.group_by("model")
+        .agg(pl.col("wis", "underprediction", "dispersion", "overprediction").sum())
+        .sort(["wis", "model"], maintain_order=True)
     )
 
     fig_height = max(4.5, 0.7 * len(component_df))
@@ -166,7 +139,9 @@ def _build_wis_components_figure(score_df: pd.DataFrame) -> plt.Figure:
         left += component_df[column].to_numpy()
 
     for y_pos, wis_total in zip(y_positions, component_df["wis"], strict=True):
-        ax.text(wis_total, y_pos, f" {wis_total:.0f}", va="center", ha="left", fontsize=9)
+        ax.text(
+            wis_total, y_pos, f" {wis_total:.0f}", va="center", ha="left", fontsize=9
+        )
 
     ax.set_yticks(y_positions)
     ax.set_yticklabels(component_df["model"])
@@ -179,26 +154,28 @@ def _build_wis_components_figure(score_df: pd.DataFrame) -> plt.Figure:
     return fig
 
 
-def _build_rwis_heatmap_figure(score_df: pd.DataFrame) -> plt.Figure:
+def _build_rwis_heatmap_figure(score_df: pl.DataFrame) -> plt.Figure:
     """
     Plot mean relative WIS by model and forecast horizon.
     """
-    rwis_df = score_df.dropna(subset=["rwis"]).copy()
-    if rwis_df.empty:
+    rwis_df = score_df.drop_nulls("rwis")
+    if rwis_df.is_empty():
         return _build_empty_figure(
             title="Plot 2. Mean Relative WIS by Model and Horizon",
             message="The score file does not contain any non-missing `rwis` values.",
         )
 
+    means = rwis_df.group_by(["model", "horizon"]).agg(pl.col("rwis").mean())
+    horizons = sorted(means["horizon"].unique().to_list())
+    heatmap_df = means.pivot(on="horizon", index="model", values="rwis")
+    value_columns = [str(h) for h in horizons]
     heatmap_df = (
-        rwis_df.groupby(["model", "horizon"], as_index=False)["rwis"]
-        .mean()
-        .pivot(index="model", columns="horizon", values="rwis")
+        heatmap_df.with_columns(pl.mean_horizontal(value_columns).alias("_mean"))
+        .sort(["_mean", "model"])
+        .drop("_mean")
     )
-    heatmap_df = heatmap_df.loc[heatmap_df.mean(axis=1).sort_values().index]
-    heatmap_df = heatmap_df.reindex(sorted(heatmap_df.columns), axis=1)
-
-    values = heatmap_df.to_numpy(dtype=float)
+    models = heatmap_df["model"].to_list()
+    values = heatmap_df.select(value_columns).to_numpy()
     finite_values = values[np.isfinite(values)]
     if finite_values.size == 0:
         return _build_empty_figure(
@@ -213,15 +190,15 @@ def _build_rwis_heatmap_figure(score_df: pd.DataFrame) -> plt.Figure:
     else:
         norm = Normalize(vmin=vmin, vmax=vmax)
 
-    fig_width = max(7, 1.4 * len(heatmap_df.columns))
-    fig_height = max(4.5, 0.7 * len(heatmap_df.index))
+    fig_width = max(7, 1.4 * len(horizons))
+    fig_height = max(4.5, 0.7 * len(models))
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     image = ax.imshow(values, aspect="auto", cmap="RdYlBu_r", norm=norm)
 
-    ax.set_xticks(np.arange(len(heatmap_df.columns)))
-    ax.set_xticklabels(heatmap_df.columns)
-    ax.set_yticks(np.arange(len(heatmap_df.index)))
-    ax.set_yticklabels(heatmap_df.index)
+    ax.set_xticks(np.arange(len(horizons)))
+    ax.set_xticklabels(horizons)
+    ax.set_yticks(np.arange(len(models)))
+    ax.set_yticklabels(models)
     ax.set_xlabel("Horizon")
     ax.set_ylabel("Model")
     ax.set_title("Plot 2. Mean Relative WIS by Model and Horizon")
@@ -246,30 +223,29 @@ def _build_rwis_heatmap_figure(score_df: pd.DataFrame) -> plt.Figure:
     return fig
 
 
-def _build_reference_date_timeseries_figure(score_df: pd.DataFrame) -> plt.Figure:
+def _build_reference_date_timeseries_figure(score_df: pl.DataFrame) -> plt.Figure:
     """
     Plot mean WIS over reference date for each model.
     """
     timeseries_df = (
-        score_df.groupby(["reference_date", "model"], as_index=False)["wis"]
-        .mean()
-        .sort_values(["reference_date", "model"])
+        score_df.group_by(["reference_date", "model"])
+        .agg(pl.col("wis").mean())
+        .sort(["reference_date", "model"])
     )
-
     model_order = (
-        timeseries_df.groupby("model", as_index=False)["wis"]
-        .mean()
-        .sort_values("wis", ascending=True)["model"]
-        .tolist()
+        timeseries_df.group_by("model")
+        .agg(pl.col("wis").mean())
+        .sort(["wis", "model"])["model"]
+        .to_list()
     )
 
     fig, ax = plt.subplots(figsize=(11, 6.5))
     colors = plt.cm.tab10(np.linspace(0, 1, max(len(model_order), 1)))
 
     for color, model_name in zip(colors, model_order, strict=False):
-        model_df = timeseries_df[timeseries_df["model"] == model_name]
+        model_df = timeseries_df.filter(pl.col("model") == model_name)
         ax.plot(
-            model_df["reference_date"],
+            model_df["reference_date"].to_numpy(),
             model_df["wis"],
             linewidth=2,
             marker="o",
@@ -283,7 +259,9 @@ def _build_reference_date_timeseries_figure(score_df: pd.DataFrame) -> plt.Figur
     ax.set_ylabel("Mean WIS")
     ax.grid(axis="both", linestyle=":", alpha=0.4)
     ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-    ax.xaxis.set_major_formatter( mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+    ax.xaxis.set_major_formatter(
+        mdates.ConciseDateFormatter(ax.xaxis.get_major_locator())
+    )
     ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
     fig.tight_layout()
     return fig

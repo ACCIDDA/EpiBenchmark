@@ -6,11 +6,13 @@ from collections.abc import Iterable
 from importlib import resources
 import logging
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
-import pandas as pd
+import polars as pl
+
 
 from .build_plots import build_summary_figures, read_scores, validate_scores
 from .load_library_challenge import load_library_challenge
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 PLOTS_FILENAME = "EpiBenchmark_plots.pdf"
 
 
-def _load_score_file(score_file_path: str | Path) -> pd.DataFrame:
+def _load_score_file(score_file_path: str | Path) -> pl.DataFrame:
     """Resolve path and read a score CSV for a CLI plotting route."""
     resolved_score_file_path = resolve_path(score_file_path)
     if not resolved_score_file_path.exists():
@@ -54,7 +56,7 @@ def _save_figures(
 
 
 def plot(
-    score_file: pd.DataFrame,
+    score_file: Any,
     output_path: str | Path | None = None,
 ) -> Path:
     """Load + validate scores, build summary figures, and save the PDF output.
@@ -75,12 +77,12 @@ def plot(
 
 def plot_challenge(
     challenge_name: str,
-    score_file: pd.DataFrame,
+    score_file: Any,
     output_path: str | Path | None = None,
 ) -> Path:
     """Build and save challenge plots including the challenge comparison models.
 
-    ``score_file`` must contain ≥ 1 submitted model and the baseline model (the baseline 
+    ``score_file`` must contain ≥ 1 submitted model and the baseline model (the baseline
     does not count toward that limit). When plotting with a challenge, hub complete models are
     loaded and scored using the same workflow as the command-line interface.
     """
@@ -91,7 +93,7 @@ def plot_challenge(
     users_scores = validate_scores(score_file)
     baseline_model = challenge_definition["baseline_model"]
     non_baseline_models = set(
-        users_scores.loc[users_scores["model"] != baseline_model, "model"]
+        users_scores.filter(pl.col("model") != baseline_model)["model"]
     )
     if not non_baseline_models:
         raise ValueError(
@@ -105,20 +107,18 @@ def plot_challenge(
     )
 
     scores_filename = challenge_definition["complete_model_scores_file"]
-    scores_resource = (
-        resources.files("epibench")
-        .joinpath("challenges-library", Path(challenge_name).stem, scores_filename)
+    scores_resource = resources.files("epibench").joinpath(
+        "challenges-library", Path(challenge_name).stem, scores_filename
     )
     logger.info("Loading bundled complete-model scores from %s", scores_resource)
     with scores_resource.open("rb") as scores_file:
-        complete_models_scores = validate_scores(pd.read_parquet(scores_file))
+        complete_models_scores = validate_scores(pl.read_parquet(scores_file))
 
-    users_scores = users_scores.copy()
-    users_scores["model"] = users_scores["model"] + "-USER-PROVIDED"
-
-    combined_scores = pd.concat(
-        [complete_models_scores, users_scores],
-        ignore_index=True,
+    users_scores = users_scores.with_columns(
+        (pl.col("model") + "-USER-PROVIDED").alias("model")
+    )
+    combined_scores = pl.concat(
+        [complete_models_scores, users_scores], how="vertical_relaxed"
     )
     combined_scores = validate_scores(combined_scores)
 

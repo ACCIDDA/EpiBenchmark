@@ -2,12 +2,14 @@
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-import pandas as pd
+import polars as pl
+
+from .dataframes import to_polars, is_dataframe, date_value
 import yaml
 
 from .hub_date_utils import validate_create_dates_against_hub_rounds
@@ -22,10 +24,10 @@ class ScoreParameters:
     """Normalized inputs shared by YAML and programmatic scoring."""
 
     hub_path: Path
-    evaluation_start_date: datetime
-    evaluation_end_date: datetime
+    evaluation_start_date: date
+    evaluation_end_date: date
     target: str
-    model_info: dict[str, list[Path | pd.DataFrame]]
+    model_info: dict[str, list[Path | pl.DataFrame]]
     include_models: list[str]
     baseline_model: str
 
@@ -192,7 +194,9 @@ def build_create_parameters(
     ):
         normalized_vintaging = vintaging.lower() == "true"
     else:
-        raise ValueError(f"Config `vintaging` key must be a boolean. Received '{vintaging}'")
+        raise ValueError(
+            f"Config `vintaging` key must be a boolean. Received '{vintaging}'"
+        )
 
     normalized_method: Literal["as_of", "checkout"] | None
     normalized_offset: int
@@ -208,9 +212,7 @@ def build_create_parameters(
                 f"Received: {type(vintaging_method)}"
             )
         method = (
-            vintaging_method.lower()
-            if allow_config_coercions
-            else vintaging_method
+            vintaging_method.lower() if allow_config_coercions else vintaging_method
         )
         if method not in {"as_of", "checkout"}:
             raise ValueError(
@@ -255,13 +257,9 @@ def build_create_parameters(
     )
 
 
-def _score_date(value: str | date | datetime) -> datetime:
-    """Normalize an API or YAML evaluation date to a naive datetime."""
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, date):
-        return datetime.combine(value, time.min)
-    return datetime.strptime(value, "%Y-%m-%d")
+def _score_date(value: str | date | datetime) -> date:
+    """Normalize an API or YAML evaluation bound to a calendar day."""
+    return date_value(value)
 
 
 def build_score_parameters(
@@ -270,7 +268,7 @@ def build_score_parameters(
     evaluation_start_date: str | date | datetime,
     evaluation_end_date: str | date | datetime,
     target: str,
-    models: Mapping[str, pd.DataFrame | str | Path | Sequence[str | Path]],
+    models: Mapping[str, Any],
     baseline_model: str,
     include_models: Sequence[str] | None = None,
     base_dir: str | Path | None = None,
@@ -292,7 +290,7 @@ def build_score_parameters(
             f"Error: {error}"
         ) from error
 
-    current_date = datetime.now()
+    current_date = datetime.now().date()
     if start > current_date or end > current_date:
         raise ValueError(
             "Date Range Error: Evaluation dates cannot be in the future. "
@@ -320,7 +318,9 @@ def build_score_parameters(
         raise ValueError(
             f"`include_models` key must be a list. Received: {type(include_models)}"
         )
-    logger.info("Adding required baseline model %s to models to process.", baseline_model)
+    logger.info(
+        "Adding required baseline model %s to models to process.", baseline_model
+    )
     normalized_include_models.append(baseline_model)
 
     if not isinstance(models, Mapping) or not models:
@@ -328,10 +328,10 @@ def build_score_parameters(
             "The 'models' key must be a non-empty dictionary of {'name': 'path'}."
         )
 
-    model_info: dict[str, list[Path | pd.DataFrame]] = {}
+    model_info: dict[str, list[Path | pl.DataFrame]] = {}
     for model_name, model_sources in models.items():
-        if isinstance(model_sources, pd.DataFrame):
-            model_info[model_name] = [model_sources.copy()]
+        if is_dataframe(model_sources):
+            model_info[model_name] = [to_polars(model_sources)]
             continue
         if isinstance(model_sources, (str, Path)):
             sources = [model_sources]
@@ -352,7 +352,10 @@ def build_score_parameters(
                 raise FileNotFoundError(
                     f"Path specified for '{model_name}' does not exist. Path {source}"
                 )
-            if resolved_source.is_file() and resolved_source.suffix.lower() in TABLE_SUFFIXES:
+            if (
+                resolved_source.is_file()
+                and resolved_source.suffix.lower() in TABLE_SUFFIXES
+            ):
                 data_files_list.append(resolved_source)
             elif resolved_source.is_dir():
                 data_files_list.extend(table_files(resolved_source))
@@ -363,7 +366,9 @@ def build_score_parameters(
                     f"Received: {source}"
                 )
         if not data_files_list:
-            raise ValueError("Found no CSV or Parquet files in path(s) in config `models` key.")
+            raise ValueError(
+                "Found no CSV or Parquet files in path(s) in config `models` key."
+            )
         model_info[model_name] = data_files_list
 
     return ScoreParameters(
@@ -383,7 +388,9 @@ class Config:
         valid_pipelines = ["create", "score"]
 
         if pipeline.lower() not in valid_pipelines:
-            raise ValueError(f"'pipeline' param must be one of {valid_pipelines}. Received '{pipeline}'.")
+            raise ValueError(
+                f"'pipeline' param must be one of {valid_pipelines}. Received '{pipeline}'."
+            )
         self.pipeline = pipeline.lower()
 
         # Validate config path
@@ -392,13 +399,15 @@ class Config:
         # path confirmations (exists, correct type)
         if not self.config_path.exists():
             raise FileNotFoundError(f"--config-path {self.config_path} does not exist.")
-        if self.config_path.suffix.lower() not in ['.yaml', '.yml']:
-            raise ValueError(f"--config-path must point to a valid .yml file. Received {self.config_path}")
-        
+        if self.config_path.suffix.lower() not in [".yaml", ".yml"]:
+            raise ValueError(
+                f"--config-path must point to a valid .yml file. Received {self.config_path}"
+            )
+
         # Load YAML config
-        with open(self.config_path, 'r') as f:
+        with open(self.config_path, "r") as f:
             self.config = yaml.safe_load(f)
-        
+
         # Base directory
         # All relative paths will be resolved relative to the config file location.
         self.base_dir = self.config_path.parent
@@ -410,11 +419,10 @@ class Config:
             self.validate_score_config()
         logger.info("Success ✅")
 
-
     def validate_create_config(self):
         """
         A method to validate a config for the `create` pipeline.
-        
+
         Creates attributes for each key of the config:
         - .hub_path
         - .challenge_name
@@ -429,7 +437,7 @@ class Config:
         - .vintaging
         - .vintaging_method (None if not vintaging)
         - .vintaging_offset (None if not vintaging)
-        - .output_path 
+        - .output_path
         """
 
         required_keys = {
@@ -474,10 +482,10 @@ class Config:
             self.config["output_path"], base_dir=self.base_dir
         )
 
-    def validate_score_config(self): 
+    def validate_score_config(self):
         """
         A method to validate a config for the `score` pipeline.
-        
+
         Creates attributes for each key of the config:
         - .hub_path
         - .evaluation_start_date
@@ -486,20 +494,20 @@ class Config:
         - .model_info
         - .include_models
         - .baseline_model
-        - .output_path 
+        - .output_path
         """
         required_keys = {
-        "hub_path", 
-        "evaluation_start_date", 
-        "evaluation_end_date", 
-        "target",
-        "models", 
-        "baseline_model",
-        "output_path"
+            "hub_path",
+            "evaluation_start_date",
+            "evaluation_end_date",
+            "target",
+            "models",
+            "baseline_model",
+            "output_path",
         }
         if missing := (required_keys - set(self.config)):
             raise KeyError(f"Config file is missing required keys: {missing}")
-        
+
         self.score_parameters = build_score_parameters(
             hub_path=self.config["hub_path"],
             evaluation_start_date=self.config["evaluation_start_date"],

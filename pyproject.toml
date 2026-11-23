@@ -33,8 +33,9 @@ keywords = [
 dependencies = [
     "click>=8.1",
     "numpy>=1.24,<2.2",
-    "pandas>=2.0,<3",
+    "polars>=1.30,<2",
     "pyarrow>=14",
+    "python-dateutil>=2.8",
     "PyYAML>=6.0",
     "pygit2",
     "hubdata",
@@ -49,6 +50,7 @@ docs = [
 ]
 
 [project.optional-dependencies]
+test = ["pytest>=8", "pandas>=2,<3"]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
