@@ -41,12 +41,13 @@ class CreateParameters:
     dates: list[str]
     gt_cutoff_dates: list[str]
     ground_truth_file: str
-    observed_column_name: str
-    location_column_name: str
-    date_column_name: str
+    observed_column_name: str | list[str]
+    location_column_name: str | list[str]
+    date_column_name: str | list[str]
     vintaging: bool
     vintaging_method: Literal["as_of", "checkout"] | None
     vintaging_offset: int
+    locations: list[str] | None = None
 
 
 def _normalize_create_dates(dates: dict[str, object] | list[object]) -> list[str]:
@@ -135,12 +136,13 @@ def build_create_parameters(
     target: str,
     dates: dict[str, object] | list[object],
     ground_truth_file: str,
-    observed_column_name: str,
-    location_column_name: str,
-    date_column_name: str,
+    observed_column_name: str | list[str],
+    location_column_name: str | list[str],
+    date_column_name: str | list[str],
     vintaging: bool | str,
     vintaging_method: str | None = None,
     vintaging_offset: int | None = None,
+    locations: list[str] | None = None,
     base_dir: str | Path | None = None,
     allow_config_coercions: bool = False,
 ) -> CreateParameters:
@@ -166,10 +168,22 @@ def build_create_parameters(
         "date_column_name": date_column_name,
     }
     for key, value in column_names.items():
-        if not isinstance(value, str) or not value:
-            raise ValueError(f"`{key}` must be a non-empty string.")
+        candidates = value if isinstance(value, list) else [value]
+        if not candidates or any(
+            not isinstance(candidate, str) or not candidate for candidate in candidates
+        ):
+            raise ValueError(
+                f"`{key}` must be a non-empty string or a non-empty list of non-empty strings."
+            )
 
     normalized_dates = _normalize_create_dates(dates)
+
+    if locations is not None and (
+        not isinstance(locations, list)
+        or not locations
+        or any(not isinstance(location, str) for location in locations)
+    ):
+        raise ValueError("`locations` must be a non-empty list of strings or None.")
 
     if isinstance(vintaging, bool):
         normalized_vintaging = vintaging
@@ -239,6 +253,7 @@ def build_create_parameters(
         vintaging=normalized_vintaging,
         vintaging_method=normalized_method,
         vintaging_offset=normalized_offset,
+        locations=list(locations) if locations is not None else None,
     )
 
 
@@ -417,6 +432,7 @@ class Config:
         - .ground_truth_file
         - .observed_column_name
         - .location_column_name
+        - .locations
         - .date_column_name
         - .vintaging
         - .vintaging_method (None if not vintaging)
@@ -450,6 +466,7 @@ class Config:
             vintaging=self.config["vintaging"],
             vintaging_method=self.config.get("vintaging_method"),
             vintaging_offset=self.config.get("vintaging_offset"),
+            locations=self.config.get("locations"),
             base_dir=self.base_dir,
             allow_config_coercions=True,
         )
